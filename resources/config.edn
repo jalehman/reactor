@@ -1,0 +1,32 @@
+{:datomic {:partition             :db.part/starcity
+           :tx-report-buffer-size #or [#env TX_REPORT_SIZE 4096]
+           :uri                   #or [#env DATOMIC_URI
+                                       ^:ref [:secrets :datomic :uri]
+                                       "datomic:mem://localhost:4334/starcity"]}
+
+ :log {:level    #profile {:dev     :trace
+                           :default :info}
+       :appender #profile {:dev     :spit
+                           :default :rolling}
+       :file     #profile {:dev     "logs/server.log"
+                           :default "/var/log/reactor/server.log"}}
+
+ :nrepl {:port #or [#env NREPL_PORT 7891]}
+
+
+ :hosts {:public #profile {:prod  "https://joinstarcity.com"
+                           :stage "https://staging.joinstarcity.com"
+                           :dev   "http://localhost:8080"}
+
+         :apply #profile {:prod  "https://apply.joinstarcity.com"
+                          :stage "https://apply.staging.joinstarcity.com"
+                          :dev   "http://localhost:8081"}}
+
+ :mailgun #profile {:prod    {:domain  "mg.joinstarcity.com"
+                              :sender  "Starcity <meg@joinstarcity.com>"
+                              :api-key ^:ref [:secrets :mailgun :api-key]}
+                    :default {:domain  "sandboxeec004e4d33845edaef9b962843713a7.mailgun.org"
+                              :sender  "Mailgun Sandbox <postmaster@sandboxeec004e4d33845edaef9b962843713a7.mailgun.org>"
+                              :api-key ^:ref [:secrets :mailgun :api-key]}}
+
+ :secrets #include #env STARCITY_SECRETS}

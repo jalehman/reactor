@@ -1,0 +1,21 @@
+/target
+/classes
+/checkouts
+pom.xml
+pom.xml.asc
+*.jar
+*.class
+/.lein-*
+/.nrepl-port
+.hgignore
+.hg/
+/data
+.sass-cache/
+/resources/public/assets/css
+/resources/public/js/cljs
+*.log            # TODO: move to /logs
+/logs
+.cljs_rhino_repl/*
+figwheel_server.log
+.DS_Store
+node_modules/

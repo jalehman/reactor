@@ -1,0 +1,134 @@
+(ns reactor.handlers.application
+  (:require [blueprints.models
+             [account :as account]
+             [address :as address]
+             [application :as application]]
+            [clojure.string :as string]
+            [datomic.api :as d]
+            [mailer
+             [core :as mailer]
+             [message :as mm]
+             [senders :as senders]]
+            [reactor.dispatch :as dispatch]
+            [reactor.handlers.common :refer :all]
+            [reactor.models.event :as event]
+            [reactor.services
+             [community-safety :as cf]
+             [slack :as slack]]
+            [reactor.services.slack.message :as sm]
+            [toolbelt
+             [async :refer [<!!?]]
+             [core :as tb]]))
+
+
+;; =============================================================================
+;; Application Submission
+;; =============================================================================
+
+
+;; =============================================================================
+;; Slack Notification
+
+
+(defn- rand-doge []
+  (let [phrases ["Such marketing" "Wow" "Much victory"
+                 "Great success" "Very amazing"
+                 "Dope" "So skilled"]]
+    (->> phrases count rand-int (get phrases))))
+
+
+(defmethod dispatch/slack :application.submit/send-slack
+  [deps event {app-id :application-id}]
+  (let [account (-> (d/entity (->db deps) app-id) application/account)
+        title   (format "%s's application" (account/full-name account))
+        link    (format "%s/admin/accounts/%s"
+                        (->public-hostname deps)
+                        (:db/id account))]
+    (slack/send
+     (->slack deps)
+     {:uuid    (:event/uuid event)
+      :channel slack/crm}
+     (sm/msg
+      (sm/success
+       (sm/title title link)
+       (sm/text (format "%s! Someone signed up! :partydoge:" (rand-doge)))
+       (sm/fields
+        (sm/field "Email" (account/email account) true)
+        (sm/field "Phone" (account/phone-number account) true)))))))
+
+
+;; =============================================================================
+;; Submission Email
+
+
+(def ^:private submission-email-subject
+  "We are Reviewing Your Application")
+
+
+(defn- send-submission-email!
+  [mailer account event]
+  (mailer/send
+   mailer
+   (account/email account)
+   submission-email-subject
+   (mm/msg
+    (mm/greet (account/first-name account))
+    (mm/p "Thank you for completing Starcity's membership application. Next:")
+    (hiccup.core/html
+     [:ol
+      [:li "We'll process your application (community safety and financial checks) to pre-qualify you for the community,"]
+      [:li "and then notify you as soon as you're pre-qualified."]])
+    (mm/p "Stay tuned and thanks for your patience!")
+    (mm/sig "Meg" "Head of Community"))
+   {:from senders/meg
+    :uuid (:event/uuid event)}))
+
+
+(defmethod dispatch/mail :application.submit/send-email
+  [deps event {app-id :application-id}]
+  (let [app     (d/entity (->db deps) app-id)
+        account (application/account app)]
+    (send-submission-email! (->mailer deps) account event)))
+
+
+;; =============================================================================
+;; Community Safety Check
+
+
+(defn- community-safety-check!
+  [cf account app]
+  (let [address     (application/address app)
+        middle-name (account/middle-name account)]
+    (<!!? (cf/background-check cf
+                               (:db/id account)
+                               (account/first-name account)
+                               (account/last-name account)
+                               (account/email account)
+                               (account/dob account)
+                               (tb/assoc-when
+                                {:address {:city        (address/city address)
+                                           :state       (address/state address)
+                                           :postal-code (address/postal-code address)}}
+                                :middle-name (if (string/blank? middle-name) nil middle-name))))))
+
+
+(defmethod dispatch/topicless :application.submit/community-safety-check
+  [deps event {app-id :application-id}]
+  (let [app     (d/entity (->db deps) app-id)
+        account (application/account app)
+        res     (community-safety-check! (->cf deps) account app)]
+    {:db/id                       (d/tempid :db.part/starcity)
+     :community-safety/account    (:db/id account)
+     :community-safety/report-url (cf/report-url res)}))
+
+
+(defmethod dispatch/topicless :application/submit
+  [_ event params]
+  [(event/create :application.submit/community-safety-check
+                 {:params params :triggered-by event})
+
+   (event/create :application.submit/send-email
+                 {:params params :topic :mail :triggered-by event})
+
+   (event/create :application.submit/send-slack
+                 {:params params :topic :slack :triggered-by event})])
