@@ -14,5 +14,5 @@
 (deftest subscribe-to-newsletter
   (with-conn conn
     (testing "can subscribe to newsletter"
-      (let [[ev tx] (helpers/dispatch conn :newsletter/subscribe dispatch/topicless :params {:email "test@test.com"})]
+      (let [[ev tx] (helpers/dispatch conn :newsletter/subscribe :params {:email "test@test.com"})]
         (is (p/chan? tx))))))

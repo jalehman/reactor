@@ -1,4 +1,7 @@
-(ns reactor.handlers.common)
+(ns reactor.handlers.common
+  (:require [reactor.models.event :as event]
+            [reactor.services.slack.message :as sm]
+            [blueprints.models.account :as account]))
 
 
 ;; =============================================================================
@@ -25,3 +28,13 @@
 
 
 (defn ->stripe [deps] (:stripe deps))
+
+
+;; =============================================================================
+;; Report Helpers
+;; =============================================================================
+
+
+(defn account-link [hostname account]
+  (let [url (format "%s/admin/accounts/%s" hostname (:db/id account))]
+    (sm/link url (account/full-name account))))

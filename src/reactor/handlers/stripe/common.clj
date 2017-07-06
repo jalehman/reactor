@@ -6,7 +6,9 @@
              [event :as re]]
             [toolbelt
              [async :refer [<!!?]]
-             [predicates :as p]]))
+             [predicates :as p]]
+            [blueprints.models.member-license :as member-license]
+            [blueprints.models.order :as order]))
 
 (defn fetch-event
   "Fetch the event data from Stripe given a reactor event."
@@ -30,3 +32,12 @@
 (s/fdef event-subject-id
         :args (s/cat :event map?)
         :ret string?)
+
+
+(defn subscription-type
+  "Given a `stripe-event`, determine what kind of invoice it's attached to."
+  [db subs-id]
+  (cond
+    (some? (member-license/by-subscription-id db subs-id)) :rent
+    (some? (order/by-subscription-id db subs-id))          :service
+    :otherwise                                             :unknown))

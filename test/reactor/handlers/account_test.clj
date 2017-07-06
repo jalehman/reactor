@@ -47,7 +47,7 @@
                    :middle-name "Marie"
                    :last-name   "Robancho"
                    :password    "password"}
-          [ev tx] (helpers/dispatch conn :account/create dispatch/topicless :params params)]
+          [ev tx] (helpers/dispatch conn :account/create :params params)]
 
       (testing "produces a valid transaction"
         (is (vector? tx))
@@ -62,22 +62,22 @@
           (is (contains? account-tx :account/middle-name))))
 
       (testing "activation email event"
-        (let [ev-tx (tb/find-by #(contains? % :event/key) tx)]
+        (let [ev-tx (tb/find-by event/notify? tx)]
           (testing "the transaction produces an activation email event"
-            (is (= (:event/key ev-tx) :account.create/send-activation-email))
+            (is (= (event/key ev-tx) :account/create))
             (is (= (:db/id ev) (:event/triggered-by ev-tx))
                 "The activation email event is triggered by the parent event."))
 
           (testing "can send an activation email"
             (let [db  (:db-after @(d/transact conn tx))
                   ev  (event/by-uuid db (:event/uuid ev-tx))
-                  res (dispatch/mail (helpers/deps db) ev (event/params ev))]
+                  res (dispatch/notify (helpers/deps db) ev (event/params ev))]
               (is (p/chan? res) "produces a channel.")
               (is (map? (a/<!! res)) "the channel holds a map."))))))
 
     (testing "parameter validity"
       (testing "middle name is optional"
-        (let [tx (second (helpers/dispatch conn :account/create dispatch/topicless :params {:email      "test@test.com"
+        (let [tx (second (helpers/dispatch conn :account/create :params {:email      "test@test.com"
                                                                                             :first-name "Jocelyn"
                                                                                             :last-name  "Robancho"
                                                                                             :password   "password"}))]
@@ -85,7 +85,7 @@
 
       (testing "first name, last name, email and password are required"
         (let [params   {:email "test@test.com" :first-name "Jocelyn" :last-name "Robancho" :password "password"}
-              dispatch #(second (helpers/dispatch conn :account/create dispatch/topicless :params %))]
+              dispatch #(second (helpers/dispatch conn :account/create :params %))]
           (is (thrown? java.lang.AssertionError (dispatch (dissoc params :email))))
           (is (thrown? java.lang.AssertionError (dispatch (dissoc params :first-name))))
           (is (thrown? java.lang.AssertionError (dispatch (dissoc params :last-name))))
@@ -93,7 +93,7 @@
 
 
 (defn- create-test-account [conn]
-  (let [[_ account-tx] (helpers/dispatch conn :account/create dispatch/topicless
+  (let [[_ account-tx] (helpers/dispatch conn :account/create
                                          :params {:email      "test@test.com"
                                                   :first-name "Jocelyn"
                                                   :last-name  "Robancho"
@@ -119,11 +119,11 @@
 
       (testing "cannot promote member that has no active license"
         (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Member has no active license!"
-                              (helpers/dispatch conn :account/promoted dispatch/topicless :params params))))
+                              (helpers/dispatch conn :account/promoted :params params))))
 
       (do
         (create-sample-member-license conn account)
-        (let [[ev tx] (helpers/dispatch conn :account/promoted dispatch/topicless :params params)]
+        (let [[ev tx] (helpers/dispatch conn :account/promoted :params params)]
 
           (testing "valid transaction data is produced"
             (is (vector? tx))
@@ -133,11 +133,4 @@
             (is (every? #(= (:event/triggered-by %) (:db/id ev)) tx)
                 "All events have the correct reference to the triggering event.")
             (is (every? #(= (:event/params %) (pr-str params)) tx)
-                "All events have the appropriate parameters."))
-
-          #_(do
-            @(d/transact conn tx)
-            (let [email-ev (->> (tb/find-by #(= (:event/key %) :reactor.handlers.account/send-promotion-email) tx)
-                                :event/uuid
-                                (event/by-uuid (d/db conn)))]
-              (is (not (nil? email-ev))))))))))
+                "All events have the appropriate parameters.")))))))

@@ -43,20 +43,18 @@
           (is (sequential? tx))
           (is (= 3 (count tx))))
 
-        (testing "transaction contains a notify-internal event"
-          (let [ev' (tb/find-by (comp #{:stripe.event.customer.source.updated/notify-internal} :event/key) tx)]
-            (is (= :slack (event/topic ev')))
+        (testing "transaction contains a report event"
+          (let [ev' (tb/find-by event/report? tx)]
             (is (= (td/id event) (-> ev' event/triggered-by td/id))
                 "has triggered-by set")
 
             (let [{:keys [account-id status]} (event/params ev')]
-              (is (integer? account-id))
-              (is (= "verification_failed" status)))))
+              (is (= "verification_failed" status))
+              (is (integer? account-id)))))
 
 
-        (testing "transaction contains a notify-customer event"
-          (let [ev' (tb/find-by (comp #{:stripe.event.customer.source.updated/notify-customer} :event/key) tx)]
-            (is (= :mail (event/topic ev')))
+        (testing "transaction contains a notify event"
+          (let [ev' (tb/find-by event/notify? tx)]
             (is (= (td/id event) (-> ev' event/triggered-by td/id))
                 "has triggered-by set")))
 
@@ -81,46 +79,42 @@
           (is (sequential? tx))
           (is (= 2 (count tx))))
 
-        (testing "transaction contains a notify-internal events"
-          (let [ev' (tb/find-by (comp #{:stripe.event.customer.source.updated/notify-internal} :event/key) tx)]
-            (is (= :slack (event/topic ev')))
+        (testing "transaction contains a report events"
+          (let [ev' (tb/find-by event/report? tx)]
             (is (= (td/id event) (-> ev' event/triggered-by td/id))
                 "has triggered-by set")
 
             (let [{:keys [account-id status]} (event/params ev')]
-              (is (integer? account-id))
-              (is (= "verified" status)))))
+              (is (= "verified" status))
+              (is (integer? account-id)))))
 
-        (testing "transaction contains a notify-customer event"
-          (let [ev' (tb/find-by (comp #{:stripe.event.customer.source.updated/notify-customer} :event/key) tx)]
-            (is (= :mail (event/topic ev')))
+        (testing "transaction contains a notify event"
+          (let [ev' (tb/find-by event/notify? tx)]
             (is (= (td/id event) (-> ev' event/triggered-by td/id))
                 "has triggered-by set")))))))
 
 
 (deftest notify-internal
   (letfn [(make-event [account status]
-            (event/create :stripe.event.customer.source.updated/notify-internal
+            (event/report :stripe.event.customer.source/updated
                           {:params {:account-id [:account/email (account/email account)]
-                                    :status     status}
-                           :topic  :slack}))]
+                                    :status     status}}))]
     (with-conn conn
       (let [account  (mock/account-tx)
-            {tx :tx} (helpers/dispatch-event conn (make-event account "verification_failed") dispatch/slack account)]
+            {tx :tx} (helpers/dispatch-event conn (make-event account "verification_failed") account)]
+        (testing "produces channel"
+          (is (p/chan? tx))
+          (is (map? (a/<!! tx)))))
+
+      (let [account  (mock/account-tx)
+            {tx :tx} (helpers/dispatch-event conn (make-event account "verified") account)]
 
         (testing "produces channel"
           (is (p/chan? tx))
           (is (map? (a/<!! tx)))))
 
       (let [account  (mock/account-tx)
-            {tx :tx} (helpers/dispatch-event conn (make-event account "verified") dispatch/slack account)]
-
-        (testing "produces channel"
-          (is (p/chan? tx))
-          (is (map? (a/<!! tx)))))
-
-      (let [account  (mock/account-tx)
-            {tx :tx} (helpers/dispatch-event conn (make-event account "blahblahblah") dispatch/slack account)]
+            {tx :tx} (helpers/dispatch-event conn (make-event account "blahblahblah") account)]
 
         (testing "produces nothing"
           (is (nil? tx)))))))
@@ -128,20 +122,19 @@
 
 (deftest notify-customer
   (letfn [(make-event [account status]
-            (event/create :stripe.event.customer.source.updated/notify-customer
+            (event/notify :stripe.event.customer.source/updated
                           {:params {:account-id [:account/email (account/email account)]
-                                    :status     status}
-                           :topic  :mail}))]
+                                    :status     status}}))]
     (with-conn conn
       (let [account  (mock/account-tx :role :account.role/onboarding)
-            {tx :tx} (helpers/dispatch-event conn (make-event account "verification_failed") dispatch/mail account)]
+            {tx :tx} (helpers/dispatch-event conn (make-event account "verification_failed") account)]
 
         (testing "produces channel"
           (is (p/chan? tx))
           (is (map? (a/<!! tx)))))
 
       (let [account  (mock/account-tx)
-            {tx :tx} (helpers/dispatch-event conn (make-event account "verified") dispatch/mail account)]
+            {tx :tx} (helpers/dispatch-event conn (make-event account "verified") account)]
 
         (testing "produces nothing"
           (is (nil? tx)))))))

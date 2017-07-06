@@ -3,5 +3,5 @@
             [reactor.handlers.common :refer :all]
             [reactor.services.weebly :as weebly]))
 
-(defmethod dispatch/topicless :newsletter/subscribe [deps event {email :email}]
+(defmethod dispatch/job :newsletter/subscribe [deps event {email :email}]
   (weebly/subscribe! (->weebly deps) email))

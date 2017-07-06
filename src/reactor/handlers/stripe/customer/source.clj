@@ -1,8 +1,7 @@
 (ns reactor.handlers.stripe.customer.source
   (:require [blueprints.models.account :as account]
-            [mailer
-             [core :as mailer]
-             [message :as mm]]
+            [mailer.core :as mailer]
+            [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
@@ -12,8 +11,19 @@
             [ribbon.event :as re]
             [toolbelt.datomic :as td]))
 
+
 ;; =============================================================================
-;; Notify Customer
+;; Helpers
+;; =============================================================================
+
+
+(defn- status-dispatch
+  [deps event params]
+  (:status params))
+
+
+;; =============================================================================
+;; Notify
 ;; =============================================================================
 
 
@@ -24,16 +34,15 @@
     :otherwise                    (throw (ex-info "Invalid role." {:role (account/role account)}))))
 
 
-(defmulti notify-customer
+(defmulti notify
   "Notify the customer of a verification event."
-  (fn [deps event params]
-    (:status params)))
+  status-dispatch)
 
 
-(defmethod notify-customer :default [_ _ _] nil) ; nothing to do
+(defmethod notify :default [_ _ _] nil) ; nothing to do
 
 
-(defmethod notify-customer "verification_failed" [deps event {:keys [account-id]}]
+(defmethod notify "verification_failed" [deps event {:keys [account-id]}]
   (let [account (td/entity account-id (->db deps))]
     (mailer/send
      (->mailer deps)
@@ -49,26 +58,25 @@
      {:uuid (event/uuid event)})))
 
 
-(defmethod dispatch/mail :stripe.event.customer.source.updated/notify-customer
+(defmethod dispatch/notify :stripe.event.customer.source/updated
   [deps event params]
-  (notify-customer deps event params))
+  (notify deps event params))
 
 
 ;; =============================================================================
-;; Notify Internal
+;; Report
 ;; =============================================================================
 
 
-(defmulti notify-internal
+(defmulti report
   "Notify our team of a verification event."
-  (fn [deps event params]
-    (:status params)))
+  status-dispatch)
 
 
-(defmethod notify-internal :default [_ _ _] nil)
+(defmethod report :default [_ _ _] nil)
 
 
-(defmethod notify-internal "verified" [deps event {:keys [account-id]}]
+(defmethod report "verified" [deps event {:keys [account-id]}]
   (let [account (td/entity account-id (->db deps))]
     (slack/send
      (->slack deps)
@@ -81,7 +89,7 @@
                         (account/full-name account))))))))
 
 
-(defmethod notify-internal "verification_failed" [deps event {:keys [account-id]}]
+(defmethod report "verification_failed" [deps event {:keys [account-id]}]
   (let [account (td/entity account-id (->db deps))]
     (slack/send
      (->slack deps)
@@ -94,29 +102,14 @@
                         (account/full-name account))))))))
 
 
-(defmethod dispatch/slack :stripe.event.customer.source.updated/notify-internal
+(defmethod dispatch/report :stripe.event.customer.source/updated
   [deps event params]
-  (notify-internal deps event params))
+  (report deps event params))
 
 
 ;; =============================================================================
 ;; Transactions
 ;; =============================================================================
-
-
-(defn- notify-event
-  [key topic]
-  (fn [account status triggered-by]
-    (event/create key
-                  {:params       {:account-id (td/id account)
-                                  :status     status}
-                   :triggered-by triggered-by
-                   :topic        topic})))
-
-
-(def notify-events
-  (juxt (notify-event :stripe.event.customer.source.updated/notify-internal :slack)
-        (notify-event :stripe.event.customer.source.updated/notify-customer :mail)))
 
 
 (defmethod dispatch/stripe :stripe.event.customer.source/updated
@@ -127,6 +120,9 @@
     ;; NOTE: Is deleting the customer even necessary? Perform some
     ;; experimentation with this flow later.
     (when (= object "bank_account")
-      (cond-> (notify-events account status event)
+      (cond-> ((juxt event/report event/notify) (event/key event)
+               {:params       {:account-id (td/id account)
+                               :status     status}
+                :triggered-by event})
         (= status "verification_failed")
         (conj [:db.fn/retractEntity [:stripe-customer/customer-id customer]])))))

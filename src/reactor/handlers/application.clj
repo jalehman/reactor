@@ -37,7 +37,7 @@
     (->> phrases count rand-int (get phrases))))
 
 
-(defmethod dispatch/slack :application.submit/send-slack
+(defmethod dispatch/report :application/submit
   [deps event {app-id :application-id}]
   (let [account (-> (d/entity (->db deps) app-id) application/account)
         title   (format "%s's application" (account/full-name account))
@@ -61,34 +61,25 @@
 ;; Submission Email
 
 
-(def ^:private submission-email-subject
-  "We are Reviewing Your Application")
-
-
-(defn- send-submission-email!
-  [mailer account event]
-  (mailer/send
-   mailer
-   (account/email account)
-   submission-email-subject
-   (mm/msg
-    (mm/greet (account/first-name account))
-    (mm/p "Thank you for completing Starcity's membership application. Next:")
-    (hiccup.core/html
-     [:ol
-      [:li "We'll process your application (community safety and financial checks) to pre-qualify you for the community,"]
-      [:li "and then notify you as soon as you're pre-qualified."]])
-    (mm/p "Stay tuned and thanks for your patience!")
-    (mm/sig "Meg" "Head of Community"))
-   {:from senders/meg
-    :uuid (:event/uuid event)}))
-
-
-(defmethod dispatch/mail :application.submit/send-email
+(defmethod dispatch/notify :application/submit
   [deps event {app-id :application-id}]
   (let [app     (d/entity (->db deps) app-id)
         account (application/account app)]
-    (send-submission-email! (->mailer deps) account event)))
+    (mailer/send
+     (->mailer deps)
+     (account/email account)
+     "Starcity: We are Reviewing Your Application"
+     (mm/msg
+      (mm/greet (account/first-name account))
+      (mm/p "Thank you for completing Starcity's membership application. Next:")
+      (hiccup.core/html
+       [:ol
+        [:li "We'll process your application (community safety and financial checks) to pre-qualify you for the community,"]
+        [:li "and then notify you as soon as you're pre-qualified."]])
+      (mm/p "Stay tuned and thanks for your patience!")
+      (mm/sig "Meg" "Head of Community"))
+     {:from senders/meg
+      :uuid (event/uuid event)})))
 
 
 ;; =============================================================================
@@ -112,7 +103,7 @@
                                 :middle-name (if (string/blank? middle-name) nil middle-name))))))
 
 
-(defmethod dispatch/topicless :application.submit/community-safety-check
+(defmethod dispatch/job :application.submit/community-safety-check
   [deps event {app-id :application-id}]
   (let [app     (d/entity (->db deps) app-id)
         account (application/account app)
@@ -122,13 +113,13 @@
      :community-safety/report-url (cf/report-url res)}))
 
 
-(defmethod dispatch/topicless :application/submit
+(defmethod dispatch/job :application/submit
   [_ event params]
   [(event/create :application.submit/community-safety-check
                  {:params params :triggered-by event})
 
-   (event/create :application.submit/send-email
-                 {:params params :topic :mail :triggered-by event})
+   (event/notify :application/submit
+                 {:params params :triggered-by event})
 
-   (event/create :application.submit/send-slack
-                 {:params params :topic :slack :triggered-by event})])
+   (event/report :application/submit
+                 {:params params :triggered-by event})])

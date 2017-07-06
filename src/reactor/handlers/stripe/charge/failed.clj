@@ -17,7 +17,9 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [taoensso.timbre :as timbre]
-            [toolbelt.datomic :as td]))
+            [toolbelt.datomic :as td]
+            [ribbon.event :as re]
+            [datomic.api :as d]))
 
 ;; =============================================================================
 ;; Helpers
@@ -29,21 +31,11 @@
 
 
 ;; =============================================================================
-;; Internal Notification (slack)
+;; Reports
 ;; =============================================================================
 
 
-(defmulti notify-internal
-  "Notify us that a customer's charge has failed."
-  (fn [deps event params]
-    (:type params)))
-
-
-(defmethod notify-internal :default [_ _ _] nil) ; nothing to do
-
-
-(defmethod notify-internal :security-deposit
-  [deps event {:keys [account-id charge-id]}]
+(defmethod dispatch/report ::notify.deposit [deps event {:keys [account-id charge-id]}]
   (let [[account charge] (td/entities (->db deps) account-id charge-id)
         deposit          (deposit/by-account account)]
     (slack/send
@@ -60,8 +52,7 @@
         (sm/field "Amount" (format "$%.2f" (charge/amount charge)) true)))))))
 
 
-(defmethod notify-internal :rent
-  [deps event {:keys [account-id charge-id]}]
+(defmethod dispatch/report ::notify.rent [deps event {:keys [account-id charge-id]}]
   (let [[account charge] (td/entities (->db deps) account-id charge-id)]
     (slack/send
      (->slack deps)
@@ -77,8 +68,7 @@
         (sm/field "Email" (account/email account) true)))))))
 
 
-(defmethod notify-internal :service
-  [deps event {:keys [account-id charge-id]}]
+(defmethod dispatch/report ::notify.service [deps event {:keys [account-id charge-id]}]
   (let [[account charge] (td/entities (->db deps) account-id charge-id)
         payment          (payment/by-charge-id (->db deps) (charge/id charge))
         order            (order/by-payment (->db deps) payment)]
@@ -97,23 +87,9 @@
         (sm/field "Email" (account/email account) true)))))))
 
 
-(defmethod dispatch/slack :stripe.event.charge.failed/notify-internal
-  [deps event params]
-  (notify-internal deps event params))
-
-
 ;; =============================================================================
-;; Email Notification
-
-
-;; TODO: Test
-(defmulti notify-customer
-  "Notify the customer that his/her charge has failed."
-  (fn [deps event params]
-    (:type params)))
-
-
-(defmethod notify-customer :default [_ _ _] nil) ; nothing to do
+;; Notify Events
+;; =============================================================================
 
 
 (defn- retry-link [deps charge]
@@ -123,8 +99,7 @@
       (format "%s/onboarding" (->public-hostname deps)))))
 
 
-(defmethod notify-customer :security-deposit
-  [deps event {:keys [account-id charge-id]}]
+(defmethod dispatch/notify ::notify.deposit [deps event {:keys [account-id charge-id]}]
   (let [[account charge] (td/entities (->db deps) account-id charge-id)]
     (mailer/send
      (->mailer deps)
@@ -143,8 +118,7 @@
      {:uuid (event/uuid event)})))
 
 
-(defmethod notify-customer :rent
-  [deps event {:keys [account-id charge-id]}]
+(defmethod dispatch/notify ::notify.rent [deps event {:keys [account-id charge-id]}]
   (let [[account charge] (td/entities (->db deps) account-id charge-id)
         payment          (rent-payment/by-charge (->db deps) charge)]
     (mailer/send
@@ -160,8 +134,7 @@
      {:uuid (event/uuid event)})))
 
 
-(defmethod notify-customer :service
-  [deps event {:keys [account-id charge-id]}]
+(defmethod dispatch/notify ::notify.service [deps event {:keys [account-id charge-id]}]
   (let [[account charge] (td/entities (->db deps) account-id charge-id)
         payment          (payment/by-charge-id (->db deps) (charge/id charge))
         order            (order/by-payment (->db deps) payment)]
@@ -180,32 +153,23 @@
      {:uuid (event/uuid event)})))
 
 
-(defmethod dispatch/mail :stripe.event.charge.failed/notify-customer
-  [deps event params]
-  (notify-customer deps event params))
-
-
 ;; =============================================================================
 ;; Process
 
 
-(defn- notify-event
-  [key topic]
-  (fn [triggered-by charge type]
-    (event/create key
-                  {:params       {:account-id (td/id (charge/account charge))
-                                  :charge-id  (td/id charge)
-                                  :type       type}
-                   :topic        topic
-                   :triggered-by triggered-by})))
+(defn- notify-params [charge]
+  {:account-id (td/id (charge/account charge))
+   :charge-id  (td/id charge)})
 
 
-(def notify-internal-event
-  (notify-event :stripe.event.charge.failed/notify-internal :slack))
-
-
-(def notify-customer-event
-  (notify-event :stripe.event.charge.failed/notify-customer :mail))
+(defn notify-events [key charge event]
+  (mapv
+   (fn [topic]
+     (event/create key
+                   {:params       (notify-params charge)
+                    :triggered-by event
+                    :topic        topic}))
+   [:report :notify]))
 
 
 (defmulti process-failed-charge
@@ -223,28 +187,33 @@
 
 (defmethod process-failed-charge :rent [deps charge event]
   (let [payment (rent-payment/by-charge (->db deps) charge)]
-    [(rent-payment/set-due payment)
-     [:db/retract (td/id payment) :rent-payment/paid-on (rent-payment/paid-on payment)]
-     (notify-internal-event event charge :rent)
-     (notify-customer-event event charge :rent)]))
+    (concat
+     (notify-events ::notify.rent charge event)
+     [(rent-payment/set-due payment)
+      [:db/retract (td/id payment) :rent-payment/paid-on (rent-payment/paid-on payment)]])))
 
 
 (defmethod process-failed-charge :security-deposit [deps charge event]
-  [(notify-internal-event event charge :security-deposit)
-   (notify-customer-event event charge :security-deposit)])
+  (notify-events ::notify.deposit charge event))
 
 
 (defmethod process-failed-charge :service [deps charge event]
   (let [payment (payment/by-charge-id (->db deps) (charge/id charge))]
-    [(payment/is-failed payment)
-     (notify-internal-event event charge :service)
-     (notify-customer-event event charge :service)]))
+    (-> (notify-events ::notify.service charge event)
+        (conj (payment/is-failed payment)))))
+
+
+(defn- invoice-charge? [stripe-event]
+  (-> stripe-event re/subject :invoice some?))
 
 
 (defmethod dispatch/stripe :stripe.event.charge/failed [deps event _]
   (let [se (common/fetch-event (->stripe deps) event)
-        ch (charge/by-id (->db deps) (common/event-subject-id se))]
-    (assert (not (charge/failed? ch)) "Charge has already failed; not processing.")
-    (concat
-     (process-failed-charge deps ch event)
-     [(charge/failed ch)])))
+        ch (charge/by-id (->db deps) (re/subject-id se))]
+    (assert (not (charge/failed? ch))
+            "Charge has already failed; not processing.")
+    ;; don't bother processing charges that belong to invoices
+    (when-not (invoice-charge? se)
+      (concat
+       (process-failed-charge deps ch event)
+       [(charge/failed ch)]))))

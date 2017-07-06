@@ -49,15 +49,15 @@
              tz    (member-license/time-zone ml)
              start (date/beginning-of-day period tz)
              end   (date/end-of-month start tz)]
-         (event/create :rent-payment/create {:params       {:start             start
-                                                            :end               end
-                                                            :amount            amount
-                                                            :member-license-id member-license-id}
-                                             :triggered-by event})))
+         (event/job :rent-payment/create {:params       {:start             start
+                                                         :end               end
+                                                         :amount            amount
+                                                         :member-license-id member-license-id}
+                                          :triggered-by event})))
      actives)))
 
 
-(defmethod dispatch/topicless :rent-payments/create-all [deps event params]
+(defmethod dispatch/job :rent-payments/create-all [deps event params]
   (assert (:period params) "The time period to create payments for must be supplied!")
   (create-payment-events (->db deps) event (:period params)))
 
@@ -65,10 +65,6 @@
 ;; =============================================================================
 ;; Create Payment
 ;; =============================================================================
-
-
-(def ^:private rent-reminder-subject
-  "Reminder: Your Rent is Due")
 
 
 (defn rent-reminder-body [account amount hostname]
@@ -80,91 +76,23 @@
    (mm/sig)))
 
 
-(defmethod dispatch/mail :rent-payment.create/send-email-reminder
+(defmethod dispatch/notify :rent-payment/create
   [deps event {:keys [member-license-id amount]}]
   (let [license (d/entity (->db deps) member-license-id)
         account (member-license/account license)]
     (mailer/send
      (->mailer deps)
      (account/email account)
-     rent-reminder-subject
+     "Starcity: Your Rent is Due"
      (rent-reminder-body account amount (->public-hostname deps))
      {:uuid (event/uuid event)})))
 
 
-(defmethod dispatch/topicless :rent-payment/create
-  [deps event {:keys [start end amount member-license-id]}]
+(defmethod dispatch/job :rent-payment/create
+  [deps event {:keys [start end amount member-license-id] :as params}]
   (let [payment (rent-payment/create amount start end :rent-payment.status/due)]
-    [(event/create :rent-payment.create/send-email-reminder
+    [(event/notify :rent-payment/create
                    {:params       {:member-license-id member-license-id
                                    :amount            amount}
-                    :triggered-by event
-                    :topic        :mail})
+                    :triggered-by event})
      payment]))
-
-
-
-;; =============================================================================
-
-
-
-(comment
-
-  (def test-licenses
-    [;; valid license
-     {:db/id                       (d/tempid :db.part/starcity -1)
-      :member-license/status       :member-license.status/active
-      :member-license/unit         [:unit/name "52gilbert-1"]
-      :member-license/price        2100.0
-      :member-license/commencement (c/to-date (t/date-time 2017 1 1))}
-     ;; uncommenced
-     {:db/id                       (d/tempid :db.part/starcity -2)
-      :member-license/status       :member-license.status/active
-      :member-license/unit         [:unit/name "52gilbert-2"]
-      :member-license/price        2100.0
-      :member-license/commencement (c/to-date (t/date-time 2017 1 10))}
-     ;; inactive
-     {:db/id                       (d/tempid :db.part/starcity -3)
-      :member-license/status       :member-license.status/inactive
-      :member-license/unit         [:unit/name "52gilbert-3"]
-      :member-license/price        2100.0
-      :member-license/commencement (c/to-date (t/date-time 2017 1 1))}
-     ;; autopay
-     {:db/id                          (d/tempid :db.part/starcity -4)
-      :member-license/status          :member-license.status/active
-      :member-license/unit            [:unit/name "52gilbert-4"]
-      :member-license/price           2100.0
-      :member-license/commencement    (c/to-date (t/date-time 2017 1 1))
-      :member-license/subscription-id "abcd"}])
-
-
-  (def test-accounts
-    [{:db/id              (d/tempid :db.part/starcity)
-      :account/first-name "Jocelyn"
-      :account/last-name  "Robancho"
-      :account/email      "test1@test.com"
-      :account/licenses   (d/tempid :db.part/starcity -1)}
-     {:db/id              (d/tempid :db.part/starcity)
-      :account/first-name "Jocelyn"
-      :account/last-name  "Robancho"
-      :account/email      "test2@test.com"
-      :account/licenses   (d/tempid :db.part/starcity -2)}
-     {:db/id              (d/tempid :db.part/starcity)
-      :account/first-name "Jocelyn"
-      :account/last-name  "Robancho"
-      :account/email      "test3@test.com"
-      :account/licenses   (d/tempid :db.part/starcity -3)}
-     {:db/id              (d/tempid :db.part/starcity)
-      :account/first-name "Jocelyn"
-      :account/last-name  "Robancho"
-      :account/email      "test4@test.com"
-      :account/licenses   (d/tempid :db.part/starcity -4)}])
-
-
-  @(d/transact conn (concat test-licenses test-accounts))
-
-
-  @(d/transact conn [(event/create :rent-payments/create-all
-                                   {:params {:period (c/to-date (t/date-time 2017 1 1 4))}})])
-
-  )

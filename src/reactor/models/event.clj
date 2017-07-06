@@ -75,19 +75,65 @@
 ;; =============================================================================
 
 
+(defn job?
+  "Is this event a job?"
+  [event]
+  (nil? (topic event)))
+
+(s/fdef job?
+        :args (s/cat :event p/entity?)
+        :ret boolean?)
+
+
+(defn report?
+  "Is this event a report?"
+  [event]
+  (= :report (topic event)))
+
+(s/fdef report?
+        :args (s/cat :event p/entity?)
+        :ret boolean?)
+
+
+(defn notify?
+  "Is this a notify event?"
+  [event]
+  (= :notify (topic event)))
+
+(s/fdef notify?
+        :args (s/cat :event p/entity?)
+        :ret boolean?)
+
+
+(defn stripe?
+  "Is this a Stripe event?"
+  [event]
+  (= :stripe (topic event)))
+
+(s/fdef stripe?
+        :args (s/cat :event p/entity?)
+        :ret boolean?)
+
+
+;; =============================================================================
+;; Transactions
+;; =============================================================================
+
+
 (defn create
   [key {:keys [id uuid params meta topic triggered-by]
-        :or   {uuid (d/squuid)}}]
+        :or   {uuid (d/squuid), topic :job}}]
   (let [params (when params (pr-str params))
-        meta   (when meta (pr-str meta))]
+        meta   (when meta (pr-str meta))
+        tid    (when-some [e triggered-by] (td/id e))]
     (tb/assoc-when
      {:db/id        (d/tempid :db.part/starcity)
       :event/uuid   uuid
       :event/key    key
+      :event/topic  topic
       :event/status :event.status/pending}
      :event/id id
-     :event/topic topic
-     :event/triggered-by (td/id triggered-by)
+     :event/triggered-by tid
      :event/params params
      :event/meta meta)))
 
@@ -102,6 +148,17 @@
         :args (s/cat :key keyword?
                      :opts (s/keys :opt-un [::id ::uuid ::params ::meta ::topic ::triggered-by]))
         :ret map?)
+
+
+(defn- create-topic [topic]
+  (fn [key opts]
+    (create key (assoc opts :topic topic))))
+
+
+(def notify (create-topic :notify))
+(def report (create-topic :report))
+(def stripe (create-topic :stripe))
+(def job (create-topic :job))
 
 
 (defn failed

@@ -25,30 +25,21 @@
 ;; =============================================================================
 
 
-(defn- activation-email-body [hostname account]
-  (mm/msg
-   (mm/greet (account/first-name account))
-   (mm/p "Thanks for signing up!")
-   (mm/p (format "<a href='%s/signup/activate?email=%s&hash=%s'>Click here to activate your account</a> and apply for a home."
-                 hostname
-                 (url-encode (account/email account))
-                 (account/activation-hash account)))
-   (mm/sig)))
-
-
-(def ^:private activation-email-subject
-  "Starcity: Activate Your Account")
-
-
-(defn- send-activation-email [deps account event]
-  (mailer/send (->mailer deps) (account/email account) activation-email-subject
-               (activation-email-body (->public-hostname deps) account)
-               {:uuid (:event/uuid event)}))
-
-
-(defmethod dispatch/mail :account.create/send-activation-email [deps event {:keys [email]}]
+(defmethod dispatch/notify :account/create [deps event {:keys [email]}]
   (let [account (account/by-email (->db deps) email)]
-    (send-activation-email deps account event)))
+    (mailer/send
+     (->mailer deps)
+     (account/email account)
+     "Starcity: Activate Your Account"
+     (mm/msg
+      (mm/greet (account/first-name account))
+      (mm/p "Thanks for signing up!")
+      (mm/p (format "<a href='%s/signup/activate?email=%s&hash=%s'>Click here to activate your account</a> and apply for a home."
+                    (->public-hostname deps)
+                    (url-encode (account/email account))
+                    (account/activation-hash account)))
+      (mm/sig))
+     {:uuid (:event/uuid event)})))
 
 
 (defn- create-account
@@ -70,11 +61,10 @@
                           (-> x string/trim string/capitalize))))
 
 
-(defmethod dispatch/topicless :account/create [_ event params]
+(defmethod dispatch/job :account/create [_ event params]
   [(create-account params)
-   (event/create :account.create/send-activation-email
-                 {:topic        :mail
-                  :params       (select-keys params [:email :first-name :last-name])
+   (event/notify :account/create
+                 {:params       (select-keys params [:email :first-name :last-name])
                   :triggered-by event})])
 
 
@@ -88,11 +78,6 @@
         url      (format "%s/admin/properties/%s/units/%s"
                          hostname (:db/id property) (:db/id unit))]
     (sm/link url (:unit/name unit))))
-
-
-(defn- account-link [hostname account]
-  (let [url (format "%s/admin/accounts/%s" hostname (:db/id account))]
-    (sm/link url (account/full-name account))))
 
 
 ;; =============================================================================
@@ -121,7 +106,7 @@
               (clojure.core/name billed)))))
 
 
-(defmethod dispatch/slack :account.promoted/send-order-summary [deps event params]
+(defmethod dispatch/report :account.promoted/order-summary [deps event params]
   (let [account (d/entity (->db deps) (:account-id params))
         orders  (order/orders (->db deps) account)]
     (when-not (empty? orders)
@@ -142,7 +127,7 @@
 ;; Slack
 
 
-(defmethod dispatch/slack :account.promoted/send-slack [deps event params]
+(defmethod dispatch/report :account/promoted [deps event params]
   (let [account (d/entity (->db deps) (:account-id params))
         license (member-license/active (->db deps) account)]
     (slack/send
@@ -191,21 +176,21 @@
                   :uuid (event/uuid event)})))
 
 
-(defmethod dispatch/mail :account.promoted/send-email [deps event params]
+(defmethod dispatch/notify :account/promoted [deps event params]
   (let [account (d/entity (->db deps) (:account-id params))]
     (send-promotion-email deps account event)))
 
 
-(defmethod dispatch/topicless :account/promoted [deps event params]
+(defmethod dispatch/job :account/promoted [deps event params]
   (let [account (d/entity (->db deps) (:account-id params))
         license (member-license/active (->db deps) account)]
     (if-not (some? license)
       (throw (ex-info "Member has no active license!" {:account (account/email account)}))
-      [(event/create :account.promoted/send-email
-                     {:topic :mail :params params :triggered-by event})
+      [(event/notify :account/promoted
+                     {:params params :triggered-by event})
 
-       (event/create :account.promoted/send-slack
-                     {:topic :slack :params params :triggered-by event})
+       (event/report :account/promoted
+                     {:params params :triggered-by event})
 
-       (event/create :account.promoted/send-order-summary
-                     {:topic :slack :params params :triggered-by event})])))
+       (event/report :account.promoted/order-summary
+                     {:params params :triggered-by event})])))

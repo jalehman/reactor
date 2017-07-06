@@ -94,7 +94,7 @@
   (with-conn conn
     (setup-active-licenses conn)
     (let [params  {:period (c/to-date (t/date-time 2017 1 15))}
-          [ev tx] (helpers/dispatch conn :rent-payments/create-all dispatch/topicless :params params)]
+          [ev tx] (helpers/dispatch conn :rent-payments/create-all :params params)]
 
       (testing "`:rent-payments/create-all` produces valid `:rent-payment/create` events for each active license"
         (is (= 2 (count tx)))
@@ -102,7 +102,7 @@
 
       (testing "must supply time period"
         (is (thrown? java.lang.AssertionError
-                     (helpers/dispatch conn :rent-payments/create-all dispatch/topicless)))))))
+                     (helpers/dispatch conn :rent-payments/create-all)))))))
 
 
 (deftest create-rent-payment
@@ -116,7 +116,7 @@
                    :amount            amount
                    :start             start
                    :end               end}
-          [ev tx] (helpers/dispatch conn :rent-payment/create dispatch/topicless :params params)]
+          [ev tx] (helpers/dispatch conn :rent-payment/create :params params)]
 
       (testing "produces a transaction with two entities"
         (is (vector? tx))
@@ -130,22 +130,22 @@
           (is (= end (:rent-payment/period-end py)))
           (is (= 2100.0 (:rent-payment/amount py)))))
 
-      (testing "produces a transaction with an email reminder event"
+      (testing "produces a transaction with a notify event"
         (let [ev' (tb/find-by :event/key tx)]
           (is (map? ev') "there's an event")
-          (is (= (:event/topic ev') :mail))
-          (is (= :rent-payment.create/send-email-reminder (:event/key ev')))
+          (is (event/notify? ev'))
+          (is (= :rent-payment/create (:event/key ev')))
           (is (= (:db/id ev) (:event/triggered-by ev'))))))))
 
 
 (deftest send-rent-email-reminder
   (with-conn conn
     (setup-active-licenses conn)
-    (let [account (d/entity (d/db conn) [:account/email "test1@test.com"])
-          license (member-license/active (d/db conn) account)
-          amount  2100.0
-          [ev tx] (helpers/dispatch conn :rent-payment.create/send-email-reminder dispatch/mail
-                                    :params {:amount amount :member-license-id (:db/id license)})]
+    (let [account  (d/entity (d/db conn) [:account/email "test1@test.com"])
+          license  (member-license/active (d/db conn) account)
+          event    (event/notify :rent-payment/create {:params {:amount            2100.0
+                                                                :member-license-id (:db/id license)}})
+          {tx :tx} (helpers/dispatch-event conn event)]
 
       (testing "a channel is produced"
         (is (p/chan? tx))

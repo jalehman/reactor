@@ -21,7 +21,7 @@
   (format "%s/admin/accounts/%s/notes" hostname (-> note note/account :db/id)))
 
 
-(defmethod dispatch/slack :note.create/send-slack
+(defmethod dispatch/report :note/create
   [deps event {:keys [uuid]}]
   (let [note (note/by-uuid (->db deps) uuid)
         type (if (note/ticket? note) "ticket" "note")]
@@ -45,7 +45,7 @@
 ;; Create
 
 
-(defmethod dispatch/topicless :note/create
+(defmethod dispatch/job :note/create
   [deps event {:keys [notify? subject content account-id] :as params}]
   (let [note (note/create subject content)
         tx   (if-let [account (d/entity (->db deps) account-id)]
@@ -53,8 +53,7 @@
                note)]
     (if notify?
       [tx
-       (event/create :note.create/send-slack
+       (event/report :note/create
                      {:params       {:uuid (:note/uuid note)}
-                      :topic        :slack
                       :triggered-by event})]
       tx)))

@@ -8,6 +8,7 @@
             [reactor.handlers.collaborator]
             [reactor.handlers.newsletter]
             [reactor.handlers.note]
+            [reactor.handlers.stripe]
             [reactor.models.event :as event]
             [taoensso.timbre :as timbre]
             [toolbelt
@@ -68,7 +69,7 @@
   entities are then passed to `dispatch-fn` (along with the transaction report)
   for processing."
   [conn mult deps extraction-fn & {:keys [topic buf-size]
-                                   :or   {topic    ::topicless
+                                   :or   {topic    :job
                                           buf-size 4096}}]
   (let [c (a/chan (a/sliding-buffer buf-size))]
     (a/go-loop []
@@ -120,21 +121,6 @@
           (filter (comp #{topic} :event/topic))))))
 
 
-(defn- extract-topicless
-  [txr topics]
-  (when-some [ds (pending-datoms txr)]
-    (->> (map (partial d/entity (:db-after txr)) ds)
-         (filter #(or (nil? (:event/topic %))
-                      (not ((set topics) (:event/topic %))))))))
-
-
-(defn- start-topicless-queue!
-  [conn mult deps topics]
-  (let [q (start-queue! conn mult deps #(extract-topicless % topics))]
-    (timbre/info ::start {:topic ::topicless})
-    [::topicless q]))
-
-
 ;; =============================================================================
 ;; API
 ;; =============================================================================
@@ -159,8 +145,14 @@
 ;; Lifecycle
 
 
+;; `job`: events that perform arbitrary work; default when no other topic is specified.
+;; `:notify`: events that involve notifying members (external)
+;; `:report`: events that involve reporting information to us (internal)
+;; `:stripe`: stripe-specific events (webhooks)
+
+
 (def ^:private topics
-  [:mail :slack :stripe])
+  [:notify :report :stripe :job])
 
 
 (defn start!
@@ -171,7 +163,7 @@
      (timbre/info ::start {:topic topic})
      (let [q (start-queue! conn mult deps (partial extract-pending topic) :topic topic)]
        (conj acc [topic q])))
-   [(start-topicless-queue! conn mult deps topics)]
+   []
    topics))
 
 (s/fdef start!

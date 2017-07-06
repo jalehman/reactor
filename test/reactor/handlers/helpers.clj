@@ -2,7 +2,9 @@
   (:require [datomic.api :as d]
             [mock.mock :as mock]
             [reactor.models.event :as event]
-            [reactor.reactor :as reactor]))
+            [reactor.reactor :as reactor]
+            [reactor.dispatch :as dispatch]))
+
 
 (defn deps
   "Produce event handler dependencies."
@@ -16,25 +18,34 @@
       (assoc :db db)))
 
 
+(defn dispatch-for-event [event]
+  (get {:report dispatch/report
+        :notify dispatch/notify
+        :stripe dispatch/stripe
+        :job    dispatch/job}
+       (event/topic event)
+       dispatch/job))
+
+
 (defn dispatch
   "Given a datomic `conn`, event `key`, `dispatch-fn` to process the event with
   and `opts` to pass to construct the event with, transact the event to the
   database and process it. Produces the event entity and result of `dispatch-fn`."
-  [conn key dispatch-fn & {:as opts}]
+  [conn key & {:as opts}]
   (let [uuid  (d/squuid)
         opts  (assoc opts :uuid uuid)
-        db    (:db-after @(d/transact conn [(event/create key opts)]))
+        db    (:db-after (d/with (d/db conn) [(event/create key opts)]))
         event (event/by-uuid db uuid)]
-    [event (dispatch-fn (deps db) event (event/params event))]))
+    [event ((dispatch-for-event event) (deps db) event (event/params event))]))
 
 
 (defn dispatch-event
-  [conn event dispatch-fn & txdata]
+  [conn event & txdata]
   (let [uuid  (d/squuid)
         event (assoc event :event/uuid uuid)
         db    (:db-after (d/with (d/db conn) (conj txdata event)))
         event (event/by-uuid db uuid)
-        tx    (dispatch-fn (deps db) event (event/params event))]
+        tx    ((dispatch-for-event event) (deps db) event (event/params event))]
     {:db    db
      :event event
      :tx    tx}))

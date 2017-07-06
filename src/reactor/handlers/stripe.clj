@@ -1,10 +1,12 @@
 (ns reactor.handlers.stripe
-  "Only services to `require` the Stripe handlers distributed across multiple
+  "Only serves to `require` the Stripe handlers distributed across multiple
   namespaces."
   (:require [clojure
              [spec :as s]
              [string :as string]]
-            [reactor.handlers.stripe.charge]))
+            [reactor.handlers.stripe.charge]
+            [reactor.handlers.stripe.customer]
+            [reactor.handlers.stripe.invoice]))
 
 
 (defn- snake->kebab [s]

@@ -34,50 +34,53 @@
 
 
 ;; =============================================================================
-;; topicless
+;; job
 
-(defmulti topicless
-  "The dispatch function for events to be processed on the `topicless` queue."
+(defmulti job
+  "The dispatch function for events to be processed on the `job` queue."
   key-dispatch)
 
 
-(defmethod topicless :default [_ event _]
-  (default-dispatch :topicless/unhandled event))
+(defmethod job :default [_ event _]
+  (default-dispatch :job/unhandled event))
 
 
-(defmethod dispatch :default [topic] topicless)
+(defmethod dispatch :default [topic] job)
+
+
+(defmethod dispatch :job [topic] job)
 
 
 ;; =============================================================================
-;; mail
+;; notify
 
 
-(defmulti mail
-  "The dispatch function for events to be processed on the `mail` queue."
+(defmulti notify
+  "The dispatch function for events to be processed on the `notify` queue."
   key-dispatch)
 
 
-(defmethod mail :default [_ event _]
-  (default-dispatch :mail/unhandled event))
+(defmethod notify :default [_ event _]
+  (default-dispatch :notify/unhandled event))
 
 
-(defmethod dispatch :mail [_] mail)
+(defmethod dispatch :notify [_] notify)
 
 
 ;; =============================================================================
-;; Slack
+;; Report
 
 
-(defmulti slack
-  "The dispatch function for events to be processed on the `slack` queue."
+(defmulti report
+  "The dispatch function for events to be processed on the `report` queue."
   key-dispatch)
 
 
-(defmethod slack :default [_ event _]
-  (default-dispatch :slack/unhandled event))
+(defmethod report :default [_ event _]
+  (default-dispatch :report/unhandled event))
 
 
-(defmethod dispatch :slack [_] slack)
+(defmethod dispatch :report [_] report)
 
 
 ;; =============================================================================

@@ -39,7 +39,6 @@
 
 (def mock-amount (tu/mock-amount mock-event))
 
-
 (def ^:private scenario
   (partial tu/speculate-scenario event-key mock-event))
 
@@ -83,12 +82,20 @@
           (is (= 3 (count tx))))
 
         (testing "produces internal notification event"
-          (let [ev' (tb/find-by :event/key tx)]
-            (is (= :slack (event/topic ev')))
-            (is (= (td/id event) (-> ev' event/triggered-by td/id)))
+          (let [ev (tb/find-by event/report? tx)]
+            (is (= (td/id event) (-> ev event/triggered-by td/id)))
+            (is (= :reactor.handlers.stripe.charge.failed/notify.deposit (event/key ev)))
 
-            (let [{:keys [account-id charge-id type]} (event/params ev')]
-              (is (= type :security-deposit))
+            (let [{:keys [account-id charge-id]} (event/params ev)]
+              (is (integer? account-id))
+              (is (integer? charge-id)))))
+
+        (testing "produces event to notify member"
+          (let [ev (tb/find-by event/notify? tx)]
+            (is (= (td/id event) (-> ev event/triggered-by td/id)))
+            (is (= :reactor.handlers.stripe.charge.failed/notify.deposit (event/key ev)))
+
+            (let [{:keys [account-id charge-id]} (event/params ev)]
               (is (integer? account-id))
               (is (integer? charge-id)))))))
 
@@ -126,12 +133,10 @@
             (is (= :charge.status/failed (:charge/status ch)))))
 
         (testing "produces internal notification event"
-          (let [ev' (tb/find-by :event/key tx)]
-            (is (= :slack (event/topic ev')))
+          (let [ev' (tb/find-by event/report? tx)]
             (is (= (td/id event) (-> ev' event/triggered-by td/id)))
 
-            (let [{:keys [account-id charge-id type]} (event/params ev')]
-              (is (= type :rent))
+            (let [{:keys [account-id charge-id]} (event/params ev')]
               (is (integer? account-id))
               (is (integer? charge-id)))))))))
 
@@ -140,16 +145,13 @@
   (with-conn conn
     (let [account (mock/account-tx)
           charge  (charge/create account mock-subj 10.0)
-          uuid    (d/squuid)
-          event   (event/create :stripe.event.charge.failed/notify-internal
-                                {:uuid   uuid
-                                 :params {:account-id [:account/email (account/email account)]
-                                          :charge-id  [:charge/stripe-id mock-subj]
-                                          :type       :security-deposit}
-                                 :topic  :slack})
-          db      (:db-after (d/with (d/db conn) [account charge event]))
-          event   (event/by-uuid db uuid)
-          c       (dispatch/slack (deps db) event (event/params event))]
+          deposit (deposit/create account 2100)
+          event   (event/report :reactor.handlers.stripe.charge.failed/notify.deposit
+                                {:params {:account-id [:account/email (account/email account)]
+                                          :charge-id  [:charge/stripe-id mock-subj]}})
+          db      (:db-after (d/with (d/db conn) [account charge event deposit]))
+          event   (event/by-uuid db (event/uuid event))
+          c       (dispatch/report (deps db) event (event/params event))]
 
       (testing "produces a channel"
         (is (p/chan? c))
