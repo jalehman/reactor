@@ -1,9 +1,9 @@
 (ns reactor.handlers.stripe.customer.subscription.deleted
-  (:require [reactor.dispatch :as dispatch]
+  (:require [blueprints.models.event :as event]
+            [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
             [ribbon.event :as re]
-            [reactor.models.event :as event]
             [taoensso.timbre :as timbre]
             [blueprints.models.member-license :as member-license]
             [toolbelt.datomic :as td]

@@ -1,7 +1,7 @@
 (ns reactor.handlers.helpers
   (:require [datomic.api :as d]
             [mock.mock :as mock]
-            [reactor.models.event :as event]
+            [blueprints.models.event :as event]
             [reactor.deps :as deps]
             [reactor.dispatch :as dispatch]))
 

@@ -1,5 +1,6 @@
 (ns reactor.handlers.stripe.invoice.payment-failed
   (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.payment :as payment]
             [blueprints.models.rent-payment :as rent-payment]
@@ -10,7 +11,6 @@
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
             [reactor.handlers.stripe.invoice.common :as ic]
-            [reactor.models.event :as event]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [ribbon.event :as re]

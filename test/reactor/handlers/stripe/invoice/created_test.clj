@@ -1,5 +1,6 @@
 (ns reactor.handlers.stripe.invoice.created-test
   (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
@@ -16,7 +17,6 @@
             [reactor.handlers.stripe.invoice.common :as ic]
             [reactor.handlers.stripe.invoice.created]
             [reactor.handlers.stripe.test-utils :as tu]
-            [reactor.models.event :as event]
             [ribbon.event :as re]
             [toolbelt.core :as tb]
             [toolbelt.datomic :as td]

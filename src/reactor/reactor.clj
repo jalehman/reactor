@@ -10,7 +10,7 @@
             [reactor.handlers.newsletter]
             [reactor.handlers.note]
             [reactor.handlers.stripe]
-            [reactor.models.event :as event]
+            [blueprints.models.event :as event]
             [taoensso.timbre :as timbre]
             [toolbelt
              [async :refer [<!!?]]

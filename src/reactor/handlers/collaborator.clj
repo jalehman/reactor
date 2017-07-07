@@ -1,8 +1,8 @@
 (ns reactor.handlers.collaborator
   (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
             [reactor.dispatch :as dispatch]
-            [reactor.handlers.common :refer :all]
-            [reactor.models.event :as event]))
+            [reactor.handlers.common :refer :all]))
 
 
 (defn- create-collaborator [db email]

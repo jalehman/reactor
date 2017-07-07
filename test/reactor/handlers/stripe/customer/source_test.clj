@@ -12,7 +12,7 @@
             [reactor.handlers.helpers :as helpers]
             [reactor.handlers.stripe.customer.source]
             [reactor.handlers.stripe.test-utils :as tu]
-            [reactor.models.event :as event]
+            [blueprints.models.event :as event]
             [ribbon.event :as re]
             [toolbelt
              [core :as tb]

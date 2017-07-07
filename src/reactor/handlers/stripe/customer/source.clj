@@ -1,11 +1,11 @@
 (ns reactor.handlers.stripe.customer.source
   (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
-            [reactor.models.event :as event]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [ribbon.event :as re]

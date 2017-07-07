@@ -3,7 +3,7 @@
             [mock.mock :as mock]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.helpers :as helpers]
-            [reactor.models.event :as event]))
+            [blueprints.models.event :as event]))
 
 
 (defn mock-id [e]

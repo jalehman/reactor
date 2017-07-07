@@ -1,5 +1,6 @@
 (ns reactor.handlers.stripe.invoice.updated
   (:require [blueprints.models.charge :as charge]
+            [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.payment :as payment]
             [blueprints.models.rent-payment :as rent-payment]
@@ -7,7 +8,6 @@
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
             [reactor.handlers.stripe.invoice.common :as ic]
-            [reactor.models.event :as event]
             [ribbon.event :as re]
             [taoensso.timbre :as timbre]
             [toolbelt.datomic :as td]))

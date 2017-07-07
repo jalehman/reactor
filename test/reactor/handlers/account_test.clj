@@ -1,5 +1,6 @@
 (ns reactor.handlers.account-test
   (:require [blueprints.models
+             [event :as event]
              [license :as license]
              [member-license :as member-license]
              [service :as service]
@@ -14,7 +15,6 @@
              [fixtures :as fixtures :refer [with-conn]]]
             [reactor.handlers.account]
             [reactor.handlers.helpers :as helpers]
-            [reactor.models.event :as event]
             [toolbelt
              [core :as tb]
              [predicates :as p]]))

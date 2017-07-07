@@ -1,6 +1,7 @@
 (ns reactor.handlers.account
   (:require [blueprints.models
              [account :as account]
+             [event :as event]
              [member-license :as member-license]
              [order :as order]
              [property :as property]
@@ -14,7 +15,6 @@
              [senders :as senders]]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
-            [reactor.models.event :as event]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [ring.util.codec :refer [url-encode]]

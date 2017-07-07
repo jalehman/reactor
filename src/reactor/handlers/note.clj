@@ -1,11 +1,11 @@
 (ns reactor.handlers.note
   (:require [blueprints.models
              [account :as account]
+             [event :as event]
              [note :as note]]
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
-            [reactor.models.event :as event]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]))
 

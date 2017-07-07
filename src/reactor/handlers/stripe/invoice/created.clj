@@ -1,5 +1,6 @@
 (ns reactor.handlers.stripe.invoice.created
   (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
@@ -14,7 +15,6 @@
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
             [reactor.handlers.stripe.invoice.common :as ic]
-            [reactor.models.event :as event]
             [ribbon.event :as re]
             [taoensso.timbre :as timbre]
             [toolbelt.datomic :as td]))

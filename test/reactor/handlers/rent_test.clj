@@ -1,5 +1,6 @@
 (ns reactor.handlers.rent-test
   (:require [blueprints.models.member-license :as member-license]
+            [blueprints.models.event :as event]
             [clj-time
              [coerce :as c]
              [core :as t]]
@@ -12,7 +13,6 @@
             [reactor.handlers
              [helpers :as helpers]
              [rent :as rent]]
-            [reactor.models.event :as event]
             [toolbelt
              [core :as tb]
              [predicates :as p]]))

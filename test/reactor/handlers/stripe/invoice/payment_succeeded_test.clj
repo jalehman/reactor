@@ -17,7 +17,7 @@
             [reactor.handlers.stripe.invoice.common :as ic]
             [reactor.handlers.stripe.invoice.payment-succeeded]
             [reactor.handlers.stripe.test-utils :as tu]
-            [reactor.models.event :as event]
+            [blueprints.models.event :as event]
             [ribbon.event :as re]
             [toolbelt.core :as tb]
             [toolbelt.datomic :as td]

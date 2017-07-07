@@ -14,7 +14,7 @@
             [mount.core :as mount]
             [reactor.core :refer [conn]]
             [taoensso.timbre :as timbre]
-            [reactor.models.event :as event]))
+            [blueprints.models.event :as event]))
 
 (timbre/refer-timbre)
 

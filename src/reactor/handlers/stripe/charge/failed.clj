@@ -2,6 +2,7 @@
   (:require [blueprints.models
              [account :as account]
              [charge :as charge]
+             [event :as event]
              [order :as order]
              [payment :as payment]
              [rent-payment :as rent-payment]
@@ -13,7 +14,6 @@
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
-            [reactor.models.event :as event]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [taoensso.timbre :as timbre]

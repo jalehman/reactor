@@ -10,7 +10,7 @@
             [toolbelt.datomic :as td]
             [toolbelt.predicates :as p]
             [toolbelt.core :as tb]
-            [reactor.models.event :as event]
+            [blueprints.models.event :as event]
             [blueprints.models.account :as account]
             [reactor.handlers.helpers :as helpers]))
 

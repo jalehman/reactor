@@ -15,7 +15,7 @@
             [reactor.handlers.helpers :refer :all]
             [reactor.handlers.stripe.test-utils :as tu]
             [reactor.handlers.stripe.charge.failed]
-            [reactor.models.event :as event]
+            [blueprints.models.event :as event]
             [toolbelt
              [core :as tb]
              [datomic :as td]

@@ -1,7 +1,7 @@
 (ns reactor.handlers.common
-  (:require [reactor.models.event :as event]
-            [reactor.services.slack.message :as sm]
-            [blueprints.models.account :as account]))
+  (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
+            [reactor.services.slack.message :as sm]))
 
 
 ;; =============================================================================

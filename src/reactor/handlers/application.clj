@@ -2,7 +2,8 @@
   (:require [blueprints.models
              [account :as account]
              [address :as address]
-             [application :as application]]
+             [application :as application]
+             [event :as event]]
             [clojure.string :as string]
             [datomic.api :as d]
             [mailer
@@ -11,7 +12,6 @@
              [senders :as senders]]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
-            [reactor.models.event :as event]
             [reactor.services
              [community-safety :as cf]
              [slack :as slack]]

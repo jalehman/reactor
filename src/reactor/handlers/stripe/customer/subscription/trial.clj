@@ -1,8 +1,8 @@
 (ns reactor.handlers.stripe.customer.subscription.trial
-  (:require [reactor.dispatch :as dispatch]
+  (:require [blueprints.models.event :as event]
+            [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
-            [reactor.models.event :as event]
             [ribbon.event :as re]
             [taoensso.timbre :as timbre]
             [blueprints.models.member-license :as member-license]

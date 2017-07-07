@@ -1,6 +1,7 @@
 (ns reactor.handlers.stripe.charge.succeeded
   (:require [blueprints.models
              [charge :as charge]
+             [event :as event]
              [order :as order]
              [payment :as payment]
              [rent-payment :as rent-payment]
@@ -8,7 +9,6 @@
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
-            [reactor.models.event :as event]
             [taoensso.timbre :as timbre]
             [toolbelt.datomic :as td]))
 
