@@ -15,7 +15,9 @@
              [async :refer [<!!?]]
              [core :as tb]
              [predicates :as p]]
-            [ribbon.core :as ribbon]))
+            [ribbon.core :as ribbon]
+            [clj-time.core :as t]
+            [clj-time.coerce :as c]))
 
 ;; =============================================================================
 ;; Internal
@@ -63,27 +65,31 @@
       [(event/successful event)])))
 
 
+(defn- process-events
+  [conn deps db events]
+  (doseq [event events]
+    (try
+      (let [deps (assoc deps :db db)]
+        (timbre/info (event/key event) (event->map event))
+        @(d/transact-async conn (gen-tx (dispatch/dispatch (event/topic event)) deps event)))
+      (catch Throwable t
+        (timbre/error t (event/key event) (event->map event))
+        @(d/transact-async conn [(event/failed event)])))))
+
+
 (defn- start-queue!
   "Construct a new queue on `mult`. All transaction reports received are passed
   through `extraction-fn`, which is expected to produce entity ids. Constructed
   entities are then passed to `dispatch-fn` (along with the transaction report)
   for processing."
-  [conn mult deps extraction-fn & {:keys [topic buf-size]
-                                   :or   {topic    :job
-                                          buf-size 4096}}]
+  [conn mult deps extraction-fn & {:keys [buf-size]
+                                   :or   {buf-size 4096}}]
   (let [c (a/chan (a/sliding-buffer buf-size))]
     (a/go-loop []
       (when-let [txr (a/<! c)]
         (try
           (when-let [events (extraction-fn txr)]
-            (doseq [event events]
-              (try
-                (let [deps (assoc deps :db (:db-after txr))]
-                  (timbre/info (:event/key event) (event->map event))
-                  @(d/transact-async conn (gen-tx (dispatch/dispatch topic) deps event)))
-                (catch Throwable t
-                  (timbre/error t (:event/key event) (event->map event))
-                  @(d/transact-async conn [(event/failed event)])))))
+            (process-events conn deps (:db-after txr) events))
           (catch Throwable t
             (timbre/error t "extraction error!")))
         (recur)))
@@ -142,6 +148,31 @@
 
 
 ;; =============================================================================
+;; Pending Events
+
+
+(defn fetch-pending-events [db since]
+  (->> (d/q '[:find [?e ...]
+              :in $ ?since
+              :where
+              [?e :event/status :event.status/pending ?tx]
+              [?tx :db/txInstant ?tx-time]
+              [(.after ^java.util.Date ?tx-time ?since)]]
+            db since)
+       (map (partial d/entity db))))
+
+
+(defn process-pending-events!
+  "Process all events that are `:event.status/pending` that have acquired that
+  status in the last two days."
+  [conn deps]
+  (let [since  (c/to-date (t/minus (t/now) (t/days 2)))
+        events (fetch-pending-events (d/db conn) since)]
+    (timbre/info ::process-pending {:count (count events)})
+    (process-events conn deps (d/db conn) events)))
+
+
+;; =============================================================================
 ;; Lifecycle
 
 
@@ -155,8 +186,7 @@
   [:notify :report :stripe :job])
 
 
-(defn start!
-  "Start a queue for each topic in `topics`."
+(defn- start-queues!
   [conn mult deps]
   (reduce
    (fn [acc topic]
@@ -165,6 +195,15 @@
        (conj acc [topic q])))
    []
    topics))
+
+
+
+(defn start!
+  "Start a queue for each topic in `topics`."
+  [conn mult deps]
+  (let [queues (start-queues! conn mult deps)]
+    (process-pending-events! conn deps)
+    queues))
 
 (s/fdef start!
         :args (s/cat :conn p/conn?
