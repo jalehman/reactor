@@ -2,6 +2,7 @@
   (:require [clojure.core.async :as a]
             [clojure.spec :as s]
             [datomic.api :as d]
+            [reactor.deps :as deps]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.account]
             [reactor.handlers.application]
@@ -15,7 +16,6 @@
              [async :refer [<!!?]]
              [core :as tb]
              [predicates :as p]]
-            [ribbon.core :as ribbon]
             [clj-time.core :as t]
             [clj-time.coerce :as c]))
 
@@ -132,21 +132,6 @@
 ;; =============================================================================
 
 
-(s/def ::mailer #(satisfies? mailer.core/Mailer %))
-(s/def ::community-safety #(satisfies? reactor.services.community-safety/ICommunitySafety %))
-(s/def ::slack #(satisfies? reactor.services.slack/ISlack %))
-(s/def ::weebly #(satisfies? reactor.services.weebly/WeeblyPromote %))
-(s/def ::stripe ribbon/conn?)
-(s/def ::public-hostname string?)
-(s/def ::deps
-  (s/keys :req-un [::mailer
-                   ::community-safety
-                   ::slack
-                   ::weebly
-                   ::stripe
-                   ::public-hostname]))
-
-
 ;; =============================================================================
 ;; Pending Events
 
@@ -208,7 +193,7 @@
 (s/fdef start!
         :args (s/cat :conn p/conn?
                      :mult any?
-                     :deps ::deps))
+                     :deps deps/deps?))
 
 
 (defn stop!
@@ -217,27 +202,3 @@
   (doseq [[t q] queues]
     (timbre/info ::stop {:topic t})
     (stop-queue! mult q)))
-
-
-;; =============================================================================
-;; Dependencies
-
-
-(defn deps
-  "Construct the dependencies map for Reactor to function."
-  [community-safety mailer slack weebly stripe public-hostname]
-  {:community-safety community-safety
-   :mailer           mailer
-   :slack            slack
-   :weebly           weebly
-   :stripe           stripe
-   :public-hostname  public-hostname})
-
-(s/fdef deps
-        :args (s/cat :community-safety ::community-safety
-                     :mailer ::mailer
-                     :slack ::slack
-                     :weebly ::weebly
-                     :stripe ::stripe
-                     :public-hostname ::public-hostname)
-        :ret ::deps)

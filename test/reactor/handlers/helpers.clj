@@ -2,19 +2,19 @@
   (:require [datomic.api :as d]
             [mock.mock :as mock]
             [reactor.models.event :as event]
-            [reactor.reactor :as reactor]
+            [reactor.deps :as deps]
             [reactor.dispatch :as dispatch]))
 
 
 (defn deps
   "Produce event handler dependencies."
   [db & {:keys [safety mailer slack weebly stripe]}]
-  (-> (reactor/deps (or safety (mock/community-safety))
-                    (or mailer (mock/mailer))
-                    (or slack (mock/slack))
-                    (or weebly (mock/weebly))
-                    (or stripe (mock/stripe))
-                    "https://joinstarcity.com")
+  (-> (deps/deps (or safety (mock/community-safety))
+                 (or mailer (mock/mailer))
+                 (or slack (mock/slack))
+                 (or weebly (mock/weebly))
+                 (or stripe (mock/stripe))
+                 "https://joinstarcity.com")
       (assoc :db db)))
 
 

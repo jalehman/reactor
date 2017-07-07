@@ -13,6 +13,7 @@
             [mount.core :as mount :refer [defstate]]
             [reactor
              [config :as config :refer [config]]
+             [deps :as deps]
              [reactor :as reactor]]
             [reactor.services
              [community-safety :as cs]
@@ -29,7 +30,6 @@
 
 ;; =============================================================================
 ;; Community Safety
-
 
 
 (defstate community-safety
@@ -153,6 +153,7 @@
                            {:sender  (config/mailgun-sender config)
                             :send-to "josh@joinstarcity.com"})))
 
+
 ;; =============================================================================
 ;; nrepl
 
@@ -168,7 +169,7 @@
 
 
 ;; =============================================================================
-;; Slack
+;; slack
 
 
 (defstate slack
@@ -181,8 +182,7 @@
 
 
 ;; =============================================================================
-;; Weebly
-
+;; weebly
 
 
 (defstate weebly
@@ -193,8 +193,7 @@
 
 
 ;; =============================================================================
-;; Stripe
-
+;; stripe
 
 
 (defstate stripe
@@ -207,13 +206,12 @@
 ;; reactor
 
 
-;; Manages all the queues.
 (defstate reactor
-  :start (let [deps (reactor/deps community-safety
-                                  mailer
-                                  slack
-                                  weebly
-                                  stripe
-                                  (config/public-hostname config))]
+  :start (let [deps (deps/deps community-safety
+                               mailer
+                               slack
+                               weebly
+                               stripe
+                               (config/public-hostname config))]
            (reactor/start! conn mult deps))
   :stop (reactor/stop! mult reactor))
