@@ -3,8 +3,10 @@
             [ribbon.core :as ribbon]
             [reactor.services.community-safety :as cs]
             [mailer.core :as mailer]
+            [reactor.config :as config :refer [config]]
             [reactor.services.slack :as slack]
-            [reactor.services.weebly :as weebly]))
+            [reactor.services.weebly :as weebly]
+            [ribbon.core :as ribbon]))
 
 
 ;; =============================================================================
@@ -54,21 +56,3 @@
 
 (defn deps? [x]
   (s/valid? ::deps x))
-
-
-;; =============================================================================
-;; Convenience
-;; =============================================================================
-
-
-(comment
-  ;; NOTE: yuck
-  (defn production
-   [community-safety-api-key mailgun-api-key mailgun-domain slack-webhook-url
-    slack-username weebly-site-id weebly-form-id stripe-secret-key hostname]
-   (deps (cs/community-safety community-safety-api-key)
-         (mailer/mailgun mailgun-api-key mailgun-domain)
-         (slack/slack slack-webhook-url slack-username)
-         (weebly/weebly weebly-site-id weebly-form-id)
-         (ribbon/stripe-connection stripe-secret-key)
-         hostname)))
