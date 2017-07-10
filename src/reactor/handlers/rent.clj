@@ -9,7 +9,11 @@
             [toolbelt.date :as date]
             [mailer.core :as mailer]
             [blueprints.models.account :as account]
-            [mailer.message :as mm]))
+            [mailer.message :as mm]
+            [toolbelt.datomic :as td]
+            [reactor.services.slack :as slack]
+            [reactor.services.slack.message :as sm]
+            [blueprints.models.charge :as charge]))
 
 
 ;; =============================================================================
@@ -96,3 +100,38 @@
 (defmethod dispatch/job :rent-payments/create-all [deps event params]
   (assert (:period params) "The time period to create payments for must be supplied!")
   (create-payment-events (->db deps) event (:period params)))
+
+
+;; =============================================================================
+;; ACH Rent Payment Made
+;; =============================================================================
+
+
+(defmethod dispatch/report :rent-payment.payment/ach
+  [deps event {:keys [account-id payment-id]}]
+  (let [[account payment] (td/entities (->db deps) account-id payment-id)
+        charge            (rent-payment/charge payment)]
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel slack/ops}
+     (sm/msg
+      (sm/success
+       (sm/title "View Payment on Stripe"
+                 (format "https://dashboard.stripe.com/payments/%s" (charge/id charge)))
+       (sm/text (format "%s has paid his/her rent via ACH" (account/full-name account)))
+       (sm/fields
+        (sm/field "Amount"
+                  (str "$" (rent-payment/amount payment))
+                  true)
+        (sm/field "Period Start"
+                  (date/short-date (rent-payment/period-start payment))
+                  true)
+        (sm/field "Period End"
+                  (date/short-date (rent-payment/period-end payment))
+                  true)))))))
+
+
+(defmethod dispatch/job :rent-payment.payment/ach [deps event params]
+  (event/report (event/key event) {:params       params
+                                   :triggered-by event}))

@@ -1,5 +1,7 @@
 (ns reactor.events
-  (:require [blueprints.models.event :as event]
+  (:require [blueprints.models
+             [event :as event]
+             [note :as note]]
             [clojure.spec :as s]
             [toolbelt.core :as tb]
             [clojure.string :as string]
@@ -45,6 +47,51 @@
         :ret map?)
 
 
+(defn account-promoted
+  "`account` has been promoted to membership."
+  [account]
+  (event/job :account/promoted {:params {:account-id (td/id account)}}))
+
+(s/fdef account-promoted
+        :args (s/cat :account p/entity?)
+        :ret map?)
+
+
+(defn account-approved
+  "`account` has been approved for membership."
+  [account]
+  (event/job :account/approved {:params {:account-id (td/id account)}}))
+
+(s/fdef account-approved
+        :args (s/cat :account p/entity?)
+        :ret map?)
+
+
+;; =============================================================================
+;; Deposit
+;; =============================================================================
+
+
+(defn deposit-payment-made
+  [account charge-id]
+  (event/job :deposit/payment-made {:params {:account-id (td/id account)
+                                             :charge     charge-id}}))
+
+(s/fdef deposit-payment-made
+        :args (s/cat :account p/entity? :charge-id string?)
+        :ret map?)
+
+
+(defn remainder-deposit-payment-made
+  [account charge-id]
+  (event/job :deposit.remainder/payment-made {:params {:account-id (td/id account)
+                                                       :charge     charge-id}}))
+
+(s/fdef remainder-deposit-payment-made
+        :args (s/cat :account p/entity? :charge-id string?)
+        :ret map?)
+
+
 ;; =============================================================================
 ;; Newsletter
 ;; =============================================================================
@@ -61,6 +108,32 @@
 
 
 ;; =============================================================================
+;; Notes
+;; =============================================================================
+
+
+(defn note-created
+  "A `note` was created."
+  [note]
+  (event/job :note/created {:params {:uuid (note/uuid note)}}))
+
+(s/fdef note-created
+        :args (s/cat :note p/entity?)
+        :ret map?)
+
+
+(defn note-comment-created
+  "A `comment` has been added to a `note`."
+  [note comment]
+  (event/job :note.comment/created {:params {:comment-uuid (note/uuid comment)
+                                             :note-id      (td/id note)}}))
+
+(s/fdef added-note-comment
+        :args (s/cat :note p/entity? :comment p/entity?)
+        :ret map?)
+
+
+;; =============================================================================
 ;; Rent
 ;; =============================================================================
 
@@ -73,6 +146,17 @@
 
 (s/fdef create-monthly-rent-payments
         :args (s/cat :period inst?)
+        :ret map?)
+
+
+(defn rent-payment-made
+  "A member has paid his/her rent by ACH."
+  [account rent-payment]
+  (event/job :rent-payment.payment/ach {:params {:account-id (td/id account)
+                                                 :payment-id (td/id rent-payment)}}))
+
+(s/fdef rent-payment-made
+        :args (s/cat :account p/entity? :payment p/entity?)
         :ret map?)
 
 

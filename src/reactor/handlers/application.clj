@@ -26,10 +26,6 @@
 ;; =============================================================================
 
 
-;; =============================================================================
-;; Slack Notification
-
-
 (defn- rand-doge []
   (let [phrases ["Such marketing" "Wow" "Much victory"
                  "Great success" "Very amazing"
@@ -51,14 +47,10 @@
      (sm/msg
       (sm/success
        (sm/title title link)
-       (sm/text (format "%s! Someone signed up! :partydoge:" (rand-doge)))
+       (sm/text (format "%s! Someone signed up! :partyparrot:" (rand-doge)))
        (sm/fields
         (sm/field "Email" (account/email account) true)
         (sm/field "Phone" (account/phone-number account) true)))))))
-
-
-;; =============================================================================
-;; Submission Email
 
 
 (defmethod dispatch/notify :application/submit
@@ -80,10 +72,6 @@
       (mm/sig "Meg" "Head of Community"))
      {:from senders/meg
       :uuid (event/uuid event)})))
-
-
-;; =============================================================================
-;; Community Safety Check
 
 
 (defn- community-safety-check!
@@ -115,11 +103,9 @@
 
 (defmethod dispatch/job :application/submit
   [_ event params]
-  [(event/create :application.submit/community-safety-check
-                 {:params params :triggered-by event})
+  [(event/job :application.submit/community-safety-check
+              {:params params :triggered-by event})
 
-   (event/notify :application/submit
-                 {:params params :triggered-by event})
+   (event/notify :application/submit {:params params :triggered-by event})
 
-   (event/report :application/submit
-                 {:params params :triggered-by event})])
+   (event/report :application/submit {:params params :triggered-by event})])

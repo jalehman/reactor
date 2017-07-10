@@ -1,7 +1,9 @@
 (ns reactor.handlers.account
   (:require [blueprints.models
              [account :as account]
+             [approval :as approval]
              [event :as event]
+             [license :as license]
              [member-license :as member-license]
              [order :as order]
              [property :as property]
@@ -13,12 +15,33 @@
              [core :as mailer]
              [message :as mm]
              [senders :as senders]]
+            [reactor.events :as events]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [ring.util.codec :refer [url-encode]]
-            [toolbelt.core :as tb]))
+            [toolbelt.core :as tb]
+            [toolbelt.date :as date]
+            [toolbelt.datomic :as td]))
+
+
+;; =============================================================================
+;; Helpers
+;; =============================================================================
+
+
+(defn- unit-link [hostname unit]
+  (let [property (unit/property unit)
+        url      (format "%s/admin/properties/%s/units/%s"
+                         hostname (:db/id property) (:db/id unit))]
+    (sm/link url (:unit/name unit))))
+
+
+(defn- property-link [hostname property]
+  (let [url (format "%s/admin/properties/%s" hostname (:db/id property))]
+    (sm/link url (property/name property))))
+
 
 ;; =============================================================================
 ;; Account Creation
@@ -73,13 +96,6 @@
 ;; =============================================================================
 
 
-(defn- unit-link [hostname unit]
-  (let [property (unit/property unit)
-        url      (format "%s/admin/properties/%s/units/%s"
-                         hostname (:db/id property) (:db/id unit))]
-    (sm/link url (:unit/name unit))))
-
-
 ;; =============================================================================
 ;; Services Ordered
 
@@ -124,7 +140,7 @@
 
 
 ;; =============================================================================
-;; Slack
+;; Report
 
 
 (defmethod dispatch/report :account/promoted [deps event params]
@@ -143,7 +159,7 @@
 
 
 ;; =============================================================================
-;; Email
+;; Notify
 
 
 (defn- ^:private promotion-email-subject [property]
@@ -194,3 +210,40 @@
 
        (event/report :account.promoted/order-summary
                      {:params params :triggered-by event})])))
+
+
+;; =============================================================================
+;; Approve
+;; =============================================================================
+
+
+(defmethod dispatch/report :account/approved [deps event {account-id :account-id}]
+  (let [approvee (d/entity (->db deps) account-id)
+        approval (approval/by-account approvee)
+        approver (approval/approver approval)
+        unit     (approval/unit approval)
+        license  (approval/license approval)
+        property (unit/property unit)]
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel slack/crm}
+     (sm/msg
+      (sm/info
+       (sm/text
+        (format "*%s* has approved *%s* for membership! _Don't forget to send an email to let %s know that they've been approved._"
+                (account/full-name approver)
+                (account/full-name approvee)
+                (account/first-name approvee)))
+       (sm/fields
+        (sm/field "Email" (account/email approvee) true)
+        (sm/field "Property" (property-link (->public-hostname deps) property) true)
+        (sm/field "Unit" (unit-link (->public-hostname deps) unit) true)
+        (sm/field "Move-in" (date/short-date (approval/move-in approval)) true)
+        (sm/field "Term" (format "%s months" (license/term license)) true)))))))
+
+
+(defmethod dispatch/job :account/approved [deps event {account-id :account-id :as params}]
+  (let [account (d/entity (->db deps) account-id)]
+    [(event/report (event/key event) {:params params})
+     (assoc (events/revoke-session account-id) :event/triggered-by (td/id event))]))
