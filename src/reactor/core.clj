@@ -57,7 +57,7 @@
 
 (defn- install-report-queue
   "On a separate thread, take values from the `tx-report-queue` over `conn` and
-  put them onto channel `c`. This is essantially just a `core.asycn` wrapper
+  put them onto channel `c`. This is essantially just a `core.async` wrapper
   around the `tx-report-queue`."
   [conn c]
   (a/thread
@@ -141,7 +141,7 @@
 
 
 ;; =============================================================================
-;; Mailer
+;; mailer
 
 
 (defstate mailer
@@ -169,7 +169,7 @@
 
 
 ;; =============================================================================
-;; slack
+;; Slack
 
 
 (defstate slack
@@ -182,7 +182,7 @@
 
 
 ;; =============================================================================
-;; weebly
+;; Weebly
 
 
 (defstate weebly
@@ -193,7 +193,7 @@
 
 
 ;; =============================================================================
-;; stripe
+;; Stripe
 
 
 (defstate stripe
