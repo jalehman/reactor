@@ -15,4 +15,4 @@
 
 (defmethod dispatch/job :session/revoke [deps event {:keys [account-id]}]
   (when-some [eid (get-session-id (->db deps) account-id)]
-    [:db.fn/retractEntity eid]))
+    [[:db.fn/retractEntity eid]]))
