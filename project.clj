@@ -1,5 +1,5 @@
-(defproject starcity/reactor "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
+(defproject starcity/reactor "0.1.0"
+  :description "Transactional event processing queue."
   :url "https://github.com/starcity-properties/reactor"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
@@ -9,16 +9,16 @@
                  [org.clojure/tools.cli "0.3.5"]
                  ;; db
                  [com.datomic/datomic-pro "0.9.5544"]
-                 [starcity/blueprints "1.8.0-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
+                 [starcity/blueprints "1.8.0" :exclusions [com.datomic/datomic-free]]
                  [org.postgresql/postgresql "9.4.1211"]
                  ;; services
-                 [starcity/ribbon "0.3.0-SNAPSHOT"]
-                 [starcity/mailer "0.1.0-SNAPSHOT"]
+                 [starcity/ribbon "0.3.0"]
+                 [starcity/mailer "0.1.0"]
                  ;; util
                  [starcity/customs "0.1.0"]
                  [clj-time "0.13.0"]
                  [mount "0.1.11"]
-                 [starcity/toolbelt "0.1.7-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
+                 [starcity/toolbelt "0.1.7" :exclusions [com.datomic/datomic-free]]
                  [com.taoensso/timbre "4.10.0"]
                  [aero "1.1.2"]
                  [ring "1.6.1"]]
