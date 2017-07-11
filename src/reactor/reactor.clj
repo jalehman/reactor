@@ -47,15 +47,8 @@
 (defn- gen-tx [dispatch deps event]
   (let [tx (dispatch deps event (event/params event))]
     (cond
-      (and (sequential? tx)
-           (some #(contains? % :event/status) tx))
-      tx
-
       (sequential? tx)
       (conj tx (event/successful event))
-
-      (and (map? tx) (contains? tx :event/status))
-      [tx]
 
       (map? tx)
       [tx (event/successful event)]
@@ -74,7 +67,8 @@
     (try
       (let [deps (assoc deps :db db)]
         (timbre/info (event/key event) (event->map event))
-        @(d/transact-async conn (gen-tx (dispatch/dispatch (event/topic event)) deps event)))
+        (let [tx (gen-tx (dispatch/dispatch (event/topic event)) deps event)]
+          @(d/transact-async conn tx)))
       (catch Throwable t
         (timbre/error t (event/key event) (event->map event))
         @(d/transact-async conn [(event/failed event)])))))
