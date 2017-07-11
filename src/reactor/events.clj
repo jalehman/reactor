@@ -14,6 +14,16 @@
 ;; =============================================================================
 
 
+(defn reset-password
+  "Reset `account`'s password."
+  [account]
+  (event/job :account/reset-password {:params {:account-id (td/id account)}}))
+
+(s/fdef reset-password
+        :args (s/cat :account p/entity?)
+        :ret map?)
+
+
 (defn create-account
   "Create a new account."
   [email password first-name last-name & {:keys [middle-name]}]

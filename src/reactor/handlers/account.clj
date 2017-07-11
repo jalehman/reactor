@@ -62,7 +62,7 @@
                     (url-encode (account/email account))
                     (account/activation-hash account)))
       (mm/sig))
-     {:uuid (:event/uuid event)})))
+     {:uuid (event/uuid event)})))
 
 
 (defn- create-account
@@ -247,3 +247,37 @@
   (let [account (d/entity (->db deps) account-id)]
     [(event/report (event/key event) {:params params})
      (assoc (events/revoke-session account-id) :event/triggered-by (td/id event))]))
+
+
+;; =============================================================================
+;; Reset Password
+;; =============================================================================
+
+
+(defmethod dispatch/notify :account/reset-password
+  [deps event {:keys [account-id new-password]}]
+  (let [account (d/entity (->db deps) account-id)
+        link    (format "%s/login?email=%s&next=/account"
+                        (->public-hostname deps) (url-encode (account/email account)))]
+    (mailer/send
+     (->mailer deps)
+     (account/email account)
+     "Starcity: Password Reset"
+     (mm/msg
+      (mm/greet (account/first-name account))
+      (mm/p "As requested, we have reset your password. Your temporary password is:")
+      (mm/p (str "<b>" new-password "</b>"))
+      (mm/p
+       (format "After logging in <a href='%s'>here</a>, please change your password to something more memorable by clicking on <b>My Account</b> in the upper right-hand corner of the page." link))
+      (mm/p "If this was not you, please contact us at <a href='mailto:team@joinstarcity.com>team@joinstarcity.com</a>.")
+      (mm/sig))
+     {:uuid (event/uuid event)})))
+
+
+(defmethod dispatch/job :account/reset-password [deps event {account-id :account-id}]
+  (let [account                (d/entity (->db deps) account-id)
+        [new-password tx-data] (auth/reset-password account)]
+    [tx-data
+     (event/notify (event/key event) {:params       {:new-password new-password
+                                                     :account-id   account-id}
+                                      :triggered-by event})]))
