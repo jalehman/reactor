@@ -73,7 +73,8 @@
             "Invalid state; order has not been placed.")
     ;; this functionality is handled by the invoice events when we're dealing with invoices
     (when-not (payment/invoice? payment)
-      [(payment/is-paid payment)])))
+      [(payment/is-paid payment)
+       (order/is-charged order)])))     ; TODO: Add test for this datom
 
 
 (defmethod dispatch/stripe :stripe.event.charge/succeeded [deps event _]

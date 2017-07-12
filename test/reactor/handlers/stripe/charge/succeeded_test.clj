@@ -120,10 +120,14 @@
     (testing "successful service charges"
       (let [account  (mock/account-tx)
             service  (service/moving-assistance (d/db conn))
-            order    (order/create account service {:quantity 1.0})
+            order    (order/create account service {:quantity 1.0
+                                                    :status   :order.status/placed})
             charge   (charge/create account mock-subj 100.0) ; NOTE: remove after transition to unified payments
             payment  (payment/create 100.0)
-            {tx :tx} (scenario conn account charge payment (payment/add-charge payment mock-subj) (order/add-payment order payment))]
+            {tx :tx} (scenario conn account charge payment
+                               order
+                               (payment/add-charge payment mock-subj)
+                               (order/add-payment order payment))]
 
         (testing "tranasction validity"
           (is (sequential? tx))
