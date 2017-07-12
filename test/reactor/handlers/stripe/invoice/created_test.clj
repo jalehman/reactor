@@ -62,7 +62,8 @@
       (testing "invoices associated with premium service orders"
         (let [account          (mock/account-tx)
               service          (service/customize-furniture (d/db conn))
-              order            (assoc (order/create account service {:price 50.0})
+              order            (assoc (order/create account service {:price 50.0}
+                                                    :status :order.status/placed)
                                       :stripe/subs-id (ic/subs-id event))
               {tx :tx :as out} (scenario conn account order)]
 
@@ -77,7 +78,6 @@
 
           (testing "the order is updated with a payment"
             (let [order (tb/find-by :order/payments tx)]
-              (is (= (order/status order) :order.status/placed))
               (is (some? (order/payments order)))))
 
           (testing "the payment is valid"
