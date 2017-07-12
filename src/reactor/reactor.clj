@@ -9,6 +9,7 @@
             [reactor.handlers.collaborator]
             [reactor.handlers.newsletter]
             [reactor.handlers.note]
+            [reactor.handlers.order]
             [reactor.handlers.rent]
             [reactor.handlers.security-deposit]
             [reactor.handlers.session]
@@ -20,7 +21,8 @@
              [core :as tb]
              [predicates :as p]]
             [clj-time.core :as t]
-            [clj-time.coerce :as c]))
+            [clj-time.coerce :as c]
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Internal
@@ -44,21 +46,20 @@
         :ret map?)
 
 
+(defn- same-event? [e1 e2]
+  (and (= (td/id e1) (td/id e2))))
+
+
 (defn- gen-tx [dispatch deps event]
   (let [tx (dispatch deps event (event/params event))]
     (cond
-      (sequential? tx)
-      (conj tx (event/successful event))
-
-      (map? tx)
-      [tx (event/successful event)]
-
-      (p/chan? tx)
-      (let [_ (<!!? tx)]
-        [(event/successful event)])
-
-      :otherwise
-      [(event/successful event)])))
+      (and (sequential? tx)
+           (some (partial same-event? event) tx))  tx
+      (sequential? tx)                       (conj tx (event/successful event))
+      (and (map? tx) (same-event? event tx)) [tx]
+      (map? tx)                              [tx (event/successful event)]
+      (p/chan? tx)                           (do (<!!? tx) [(event/successful event)])
+      :otherwise                             [(event/successful event)])))
 
 
 (defn- process-events
