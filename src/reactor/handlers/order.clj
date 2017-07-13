@@ -7,6 +7,7 @@
             [blueprints.models.payment :as payment]
             [blueprints.models.service :as service]
             [clojure.core.async :as a]
+            [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [ribbon.charge :as rc]
@@ -47,15 +48,16 @@
 
 
 (defmulti place-order
-  (fn [deps event account order]
+  (fn [deps event order]
     (-> order order/service service/billed)))
 
 
-(defmethod place-order :default [_ event account order]
-  (throw (ex-info "This order has an unknown billing method; cannot place!"
-                  {:order   (td/id order)
-                   :event   (td/id event)
-                   :account (account/email account)})))
+(defmethod place-order :default [_ event order]
+  (let [account (order/account order)]
+    (throw (ex-info "This order has an unknown billing method; cannot place!"
+                    {:order   (td/id order)
+                     :event   (td/id event)
+                     :account (account/email account)}))))
 
 
 ;;; Billed Once
@@ -73,12 +75,13 @@
 
 
 (defmethod place-order :service.billed/once
-  [deps event account order]
-  (let [price (* (order/computed-price order) (or (order/quantity order) 1))
-        ch-id (issue-charge! deps account order price)
-        py    (payment/create price
-                              :account account
-                              :for :payment.for/order)]
+  [deps event order]
+  (let [account (order/account order)
+        price   (* (order/computed-price order) (or (order/quantity order) 1))
+        ch-id   (issue-charge! deps account order price)
+        py      (payment/create price
+                                :account account
+                                :for :payment.for/order)]
     [(order/add-payment order py)
      (order/is-placed order)
      (payment/add-charge py ch-id)
@@ -90,11 +93,12 @@
 
 
 (defmethod dispatch/job ::create-subscription
-  [deps event {:keys [account-id order-id plan-id]}]
-  (let [[account order] (td/entities (->db deps) account-id order-id)
-        cus-id          (customer/id (customer/by-account (->db deps) account))
-        sub             (<!!? (rs/create! (->stripe deps) cus-id plan-id
-                                          :quantity (int (or (order/quantity order) 1))))]
+  [deps event {:keys [order-id plan-id]}]
+  (let [order   (d/entity (->db deps) order-id)
+        account (order/account order)
+        cus-id  (customer/id (customer/by-account (->db deps) account))
+        sub     (<!!? (rs/create! (->stripe deps) cus-id plan-id
+                                  :quantity (int (or (order/quantity order) 1))))]
     [{:db/id          order-id
       :stripe/plan-id plan-id
       :stripe/subs-id (:id sub)}
@@ -115,31 +119,30 @@
       existing)))
 
 
-(defmethod dispatch/job ::create-plan [deps event {:keys [account-id order-id]}]
-  (let [[account order] (td/entities (->db deps) account-id order-id)
-        plan            (fetch-or-create-plan deps account order)]
-    (event/job ::create-subscription {:params       {:account-id account-id
-                                                     :order-id   order-id
-                                                     :plan-id    (:id plan)}
+(defmethod dispatch/job ::create-plan [deps event {:keys [order-id]}]
+  (let [order   (d/entity (->db deps) order-id)
+        account (order/account order)
+        plan    (fetch-or-create-plan deps account order)]
+    (event/job ::create-subscription {:params       {:order-id order-id
+                                                     :plan-id  (:id plan)}
                                       :triggered-by event})))
 
 
-(defmethod place-order :service.billed/monthly [deps event account order]
-  (let [cus-id   (customer/id (customer/by-account (->db deps) account))
+(defmethod place-order :service.billed/monthly [deps event order]
+  (let [account  (order/account order)
+        cus-id   (customer/id (customer/by-account (->db deps) account))
         customer (<!!? (rcu/fetch (->stripe deps) cus-id))]
     (assert (#{"card"} (rcu/default-source-type customer))
             "Customer's default source must be a credit card before a subscription can be created.")
-    (event/job ::create-plan {:params       {:account-id (td/id account)
-                                             :order-id   (td/id order)}
+    (event/job ::create-plan {:params       {:order-id (td/id order)}
                               :triggered-by event})))
 
 
 ;;; Entry
 
 
-(defmethod dispatch/job :order/place [deps event {:keys [account-id order-id]}]
-  (let [[account order] (td/entities (->db deps) account-id order-id)]
-    (assert (some? (order/computed-price order))
-            "Order cannot be placed without a price!")
+(defmethod dispatch/job :order/place [deps event {:keys [order-id]}]
+  (let [order (d/entity (->db deps) order-id)]
+    (assert (some? (order/computed-price order)) "Order cannot be placed without a price!")
     (assert (order/pending? order) "Order must have `:order.status/pending` status!")
-    (place-order deps event account order)))
+    (place-order deps event order)))

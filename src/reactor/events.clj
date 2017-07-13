@@ -149,13 +149,12 @@
 
 
 (defn place-order
-  "Place `order` for `account`."
-  [account order]
-  (event/job :order/place {:params {:account-id (td/id account)
-                                    :order-id   (td/id order)}}))
+  "Place an `order`."
+  [order]
+  (event/job :order/place {:params {:order-id (td/id order)}}))
 
 (s/fdef place-order
-        :args (s/cat :account p/entity? :order p/entity?)
+        :args (s/cat :order p/entity?)
         :ret map?)
 
 
