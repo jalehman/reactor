@@ -36,20 +36,20 @@
 
 
 (defmethod dispatch/report ::notify.deposit [deps event {:keys [account-id charge-id]}]
-  (let [[account charge] (td/entities (->db deps) account-id charge-id)
-        deposit          (deposit/by-account account)]
+  (let [[account payment] (td/entities (->db deps) account-id charge-id)
+        deposit           (deposit/by-account account)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
       :channel slack/ops}
      (sm/msg
       (sm/failure
-       (sm/title "Security Deposit ACH Failure" (charge-link (charge/id charge)))
+       (sm/title "Security Deposit ACH Failure" (charge-link (:stripe/charge-id payment)))
        (sm/text (format "%s's ACH payment has failed." (account/full-name account)))
        (sm/fields
         (sm/field "Email" (account/email account) true)
         (sm/field "Payment" (if (deposit/partially-paid? deposit) "remainder" "initial") true)
-        (sm/field "Amount" (format "$%.2f" (charge/amount charge)) true)))))))
+        (sm/field "Amount" (format "$%.2f" (payment/amount payment)) true)))))))
 
 
 (defmethod dispatch/report ::notify.rent [deps event {:keys [account-id charge-id]}]
@@ -69,9 +69,8 @@
 
 
 (defmethod dispatch/report ::notify.service [deps event {:keys [account-id charge-id]}]
-  (let [[account charge] (td/entities (->db deps) account-id charge-id)
-        payment          (payment/by-charge-id (->db deps) (charge/id charge))
-        order            (order/by-payment (->db deps) payment)]
+  (let [[account payment] (td/entities (->db deps) account-id charge-id)
+        order             (order/by-payment (->db deps) payment)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -92,15 +91,15 @@
 ;; =============================================================================
 
 
-(defn- retry-link [deps charge]
-  (let [deposit (deposit/by-charge charge)]
+(defn- retry-link [deps payment]
+  (let [deposit (deposit/by-payment payment)]
     (if (deposit/partially-paid? deposit)
       (format "%s/me/account/rent" (->public-hostname deps))
       (format "%s/onboarding" (->public-hostname deps)))))
 
 
 (defmethod dispatch/notify ::notify.deposit [deps event {:keys [account-id charge-id]}]
-  (let [[account charge] (td/entities (->db deps) account-id charge-id)]
+  (let [[account payment] (td/entities (->db deps) account-id charge-id)]
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -112,7 +111,7 @@
       ;; If it's partially paid, that means that the user is no longer
       ;; in onboarding.
       (mm/p "Please log back in to Starcity by clicking "
-            [:a {:href (retry-link deps charge)} "this link"]
+            [:a {:href (retry-link deps payment)} "this link"]
             " to retry your payment.")
       (mm/sig))
      {:uuid (event/uuid event)})))
@@ -135,9 +134,8 @@
 
 
 (defmethod dispatch/notify ::notify.service [deps event {:keys [account-id charge-id]}]
-  (let [[account charge] (td/entities (->db deps) account-id charge-id)
-        payment          (payment/by-charge-id (->db deps) (charge/id charge))
-        order            (order/by-payment (->db deps) payment)]
+  (let [[account payment] (td/entities (->db deps) account-id charge-id)
+        order             (order/by-payment (->db deps) payment)]
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -157,16 +155,22 @@
 ;; Process
 
 
-(defn- notify-params [charge]
-  {:account-id (td/id (charge/account charge))
-   :charge-id  (td/id charge)})
+(defn- charge? [e]
+  (contains? e :charge/status))
 
 
-(defn notify-events [key charge event]
+(defn- notify-params [ent]
+  {:account-id (td/id (if (charge? ent)
+                        (charge/account ent)
+                        (payment/account ent)))
+   :charge-id  (td/id ent)})
+
+
+(defn notify-events [key ent event]
   (mapv
    (fn [topic]
      (event/create key
-                   {:params       (notify-params charge)
+                   {:params       (notify-params ent)
                     :triggered-by event
                     :topic        topic}))
    [:report :notify]))
@@ -175,14 +179,15 @@
 (defmulti process-failed-charge
   "Using the charge's type, produce a transaction to update any entities (if
   any) that need to be updated in the db."
-  (fn [deps charge event]
-    (charge/type (->db deps) charge)))
+  (fn [deps ent event]
+    (if (charge? ent)
+      (charge/type (->db deps) ent)
+      (payment/payment-for ent))))
 
 
-(defmethod process-failed-charge :unknown [deps charge event]
+(defmethod process-failed-charge :default [deps _ event]
   (timbre/warn :stripe.event.charge.failed/unknown
-               {:uuid   (event/uuid event)
-                :charge (charge/id charge)}))
+               {:uuid (event/uuid event)}))
 
 
 (defmethod process-failed-charge :rent [deps charge event]
@@ -193,14 +198,12 @@
       [:db/retract (td/id payment) :rent-payment/paid-on (rent-payment/paid-on payment)]])))
 
 
-(defmethod process-failed-charge :security-deposit [deps charge event]
-  (notify-events ::notify.deposit charge event))
+(defmethod process-failed-charge :payment.for/deposit [deps payment event]
+  (notify-events ::notify.deposit payment event))
 
 
-(defmethod process-failed-charge :service [deps charge event]
-  (let [payment (payment/by-charge-id (->db deps) (charge/id charge))]
-    (-> (notify-events ::notify.service charge event)
-        (conj (payment/is-failed payment)))))
+(defmethod process-failed-charge :payment.for/order [deps payment event]
+  (notify-events ::notify.service payment event))
 
 
 (defn- invoice-charge? [stripe-event]
@@ -208,12 +211,15 @@
 
 
 (defmethod dispatch/stripe :stripe.event.charge/failed [deps event _]
-  (let [se (common/fetch-event (->stripe deps) event)
-        ch (charge/by-id (->db deps) (re/subject-id se))]
-    (assert (not (charge/failed? ch))
-            "Charge has already failed; not processing.")
+  (let [se  (common/fetch-event (->stripe deps) event)
+        sid (re/subject-id se)
+        ent (or (charge/by-id (->db deps) sid)
+                (payment/by-charge-id (->db deps) sid))]
+    (if (charge? ent)
+      (assert (not (charge/failed? ent)) "Charge has already failed; not processing.")
+      (assert (not (payment/paid? ent)) "Payment has already failed; not processing."))
     ;; don't bother processing charges that belong to invoices
     (when-not (invoice-charge? se)
-      (concat
-       (process-failed-charge deps ch event)
-       [(charge/failed ch)]))))
+      (conj
+       (process-failed-charge deps ent event)
+       (if (charge? ent) (charge/failed ent) (payment/is-failed ent))))))

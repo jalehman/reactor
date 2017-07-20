@@ -94,9 +94,11 @@
 
 (defmethod invoice-created :service [deps event stripe-event]
   (let [order   (order/by-subscription-id (->db deps) (ic/subs-id stripe-event))
-        payment (payment/create (order/price order) :for :payment.for/order)]
+        payment (payment/create (order/price order) (order/account order)
+                                :for :payment.for/order
+                                :invoice-id (re/subject-id stripe-event))]
     [(order/add-payment order payment)
-     (merge payment (payment/add-invoice payment (re/subject-id stripe-event)))
+     payment
      (event/notify ::notify.service {:params       {:subs-id (ic/subs-id stripe-event)}
                                      :triggered-by event})]))
 

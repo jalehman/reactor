@@ -62,8 +62,9 @@
       (testing "invoices associated with premium service orders"
         (let [account          (mock/account-tx)
               service          (service/customize-furniture (d/db conn))
-              order            (assoc (order/create account service {:price 50.0}
-                                                    :status :order.status/placed)
+              order            (assoc (order/create account service
+                                                    {:price  50.0
+                                                     :status :order.status/placed})
                                       :stripe/subs-id (ic/subs-id event))
               {tx :tx :as out} (scenario conn account order)]
 

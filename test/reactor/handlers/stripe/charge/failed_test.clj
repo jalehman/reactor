@@ -19,7 +19,8 @@
             [toolbelt
              [core :as tb]
              [datomic :as td]
-             [predicates :as p]]))
+             [predicates :as p]]
+            [blueprints.models.payment :as payment]))
 
 (use-fixtures :once fixtures/conn-fixture)
 
@@ -73,9 +74,11 @@
 
     (testing "failed security deposit charges"
       (let [account            (mock/account-tx)
-            charge             (charge/create account mock-subj 500.0)
-            deposit            (deposit/create account 2100)
-            {:keys [event tx]} (scenario conn account charge (deposit/add-charge deposit charge))]
+            deposit            (deposit/create account 2100.0)
+            payment            (payment/create 2100.0 account
+                                               :for :payment.for/deposit
+                                               :charge-id mock-subj)
+            {:keys [event tx]} (scenario conn account payment (deposit/add-payment deposit payment))]
 
         (testing "transition validity"
           (is (sequential? tx))
@@ -83,6 +86,7 @@
 
         (testing "produces internal notification event"
           (let [ev (tb/find-by event/report? tx)]
+            (println ev)
             (is (= (td/id event) (-> ev event/triggered-by td/id)))
             (is (= :reactor.handlers.stripe.charge.failed/notify.deposit (event/key ev)))
 

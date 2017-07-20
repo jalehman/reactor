@@ -47,9 +47,6 @@
 
 (deftest can-handle-successful-charges
   (with-conn conn
-    #_(testing "charges must have a backing charge entity"
-        (is (thrown? java.lang.Exception (scenario-charge conn :event-key))
-            "or the event will fail"))
 
     (testing "charges that have already succeeded cannot be processed more than once"
       (let [account (mock/account-tx)
@@ -73,16 +70,19 @@
 
     (testing "successful security deposit charges"
       (let [account  (mock/account-tx)
-            deposit  (deposit/create account 2100)
-            charge   (charge/create account mock-subj 10.0)
-            {tx :tx} (scenario conn account (deposit/add-charge deposit charge) charge)]
+            deposit  (deposit/create account 2100.0)
+            payment  (payment/create 2100.0 account
+                                     :for :payment.for/deposit
+                                     :charge-id mock-subj)
+            {tx :tx} (scenario conn account payment
+                               (deposit/add-payment deposit payment))]
 
         (testing "transaction validity"
           (is (sequential? tx))
-          (is (= 2 (count tx))))
+          (is (= 1 (count tx))))
 
-        (testing "contains a security deposit with updated amount received"
-          (let [x (tb/find-by :security-deposit/amount-received tx)]
+        #_(testing "contains a security deposit with updated amount received"
+            (let [x (tb/find-by :security-deposit/amount-received tx)]
             (is (< (deposit/amount-received deposit) (deposit/amount-received x))
                 "the amount received before the event is less than after the event")
             (is (= (int (charge/amount charge)) (- (deposit/amount-received x)
@@ -90,8 +90,8 @@
                 "the difference of the before and after deposit amount is equal to the charge amount")))
 
         (testing "the charge is marked as succeeded"
-          (let [ch (tb/find-by :charge/status tx)]
-            (is (= :charge.status/succeeded (:charge/status ch)))))))
+          (let [ch (tb/find-by :payment/status tx)]
+            (is (= :payment.status/paid (:payment/status ch)))))))
 
 
     (testing "successful rent payment charges"
@@ -122,20 +122,15 @@
             service  (service/moving-assistance (d/db conn))
             order    (order/create account service {:quantity 1.0
                                                     :status   :order.status/placed})
-            charge   (charge/create account mock-subj 100.0) ; NOTE: remove after transition to unified payments
-            payment  (payment/create 100.0)
-            {tx :tx} (scenario conn account charge payment
-                               order
-                               (payment/add-charge payment mock-subj)
+            payment  (payment/create 100.0 account
+                                     :for :payment.for/order
+                                     :charge-id mock-subj)
+            {tx :tx} (scenario conn account payment order
                                (order/add-payment order payment))]
 
         (testing "tranasction validity"
           (is (sequential? tx))
           (is (= 2 (count tx))))
-
-        (testing "the charge is marked as succeeded"
-          (let [ch (tb/find-by :charge/status tx)]
-            (is (charge/succeeded? ch))))
 
         (testing "the payment is marked as paid"
           (let [py (tb/find-by :payment/status tx)]

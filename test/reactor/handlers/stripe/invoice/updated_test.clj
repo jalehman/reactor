@@ -46,9 +46,10 @@
               service  (service/customize-furniture (d/db conn))
               order    (assoc (order/create account service {:price 50.0})
                               :stripe/subs-id (ic/subs-id stripe-event))
-              payment  (payment/create 50.0 :for :payment.for/order)
-              payment' (merge payment (payment/add-invoice payment (re/subject-id stripe-event)))
-              {tx :tx} (scenario conn account order payment')]
+              payment  (payment/create 50.0 account
+                                       :for :payment.for/order
+                                       :invoice-id (re/subject-id stripe-event))
+              {tx :tx} (scenario conn account order payment)]
 
           (testing "transaction validity"
             (is (map? tx))

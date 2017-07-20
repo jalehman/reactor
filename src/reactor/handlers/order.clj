@@ -79,12 +79,11 @@
   (let [account (order/account order)
         price   (* (order/computed-price order) (or (order/quantity order) 1))
         ch-id   (issue-charge! deps account order price)
-        py      (payment/create price
-                                :account account
-                                :for :payment.for/order)]
+        py      (payment/create price account
+                                :for :payment.for/order
+                                :charge-id ch-id)]
     [(order/add-payment order py)
      (order/is-placed order)
-     (payment/add-charge py ch-id)
      (charge/create account ch-id price) ; until we deprecate `charge` system-wide
      py]))
 
