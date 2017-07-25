@@ -12,7 +12,7 @@
                  [starcity/blueprints "1.10.0-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
                  [org.postgresql/postgresql "9.4.1211"]
                  ;; services
-                 [starcity/ribbon "0.3.1"]
+                 [starcity/ribbon "0.5.0-SNAPSHOT"]
                  [starcity/mailer "0.1.0"]
                  ;; util
                  [starcity/customs "0.1.0"]

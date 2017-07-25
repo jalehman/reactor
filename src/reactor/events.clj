@@ -232,3 +232,19 @@
                      :event-type string?
                      :connect-id (s/or :string string? :nothing nil?))
         :ret map?)
+
+
+(defn delete-source
+  "Delete `customer`'s source."
+  [customer source-id & [triggered-by]]
+  (event/job :stripe.customer.source/delete
+             (tb/assoc-when
+              {:params {:customer  customer
+                        :source-id source-id}}
+              :triggered-by triggered-by)))
+
+(s/fdef delete-source
+        :args (s/cat :customer string?
+                     :source-id string?
+                     :triggered-by (s/? p/entity?))
+        :ret map?)

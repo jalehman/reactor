@@ -1,16 +1,20 @@
 (ns reactor.handlers.stripe.customer.source
   (:require [blueprints.models.account :as account]
+            [blueprints.models.customer :as customer]
             [blueprints.models.event :as event]
+            [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
+            [reactor.events :as events]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [ribbon.customer :as rcu]
             [ribbon.event :as re]
+            [toolbelt.async :refer [<!!?]]
             [toolbelt.datomic :as td]))
-
 
 ;; =============================================================================
 ;; Helpers
@@ -108,21 +112,32 @@
 
 
 ;; =============================================================================
-;; Transactions
+;; Delete Source
+;; =============================================================================
+
+
+(defmethod dispatch/job :stripe.customer.source/delete
+  [deps event {:keys [customer source-id]}]
+  (let [customer (d/entity (->db deps) [:stripe-customer/customer-id customer])
+        _        (<!!? (rcu/delete-source! (->stripe deps) (customer/id customer) source-id))]
+    (when-some [bank-token (customer/bank-token customer)]
+      [[:db/retract (:db/id customer) :stripe-customer/bank-account-token bank-token]])))
+
+
+;; =============================================================================
+;; Source Updated
 ;; =============================================================================
 
 
 (defmethod dispatch/stripe :stripe.event.customer.source/updated
   [deps event params]
-  (let [stripe-event                     (common/fetch-event (->stripe deps) event)
-        {:keys [object status customer]} (re/subject stripe-event)
-        account                          (account/by-customer-id (->db deps) customer)]
-    ;; NOTE: Is deleting the customer even necessary? Perform some
-    ;; experimentation with this flow later.
+  (let [stripe-event                        (common/fetch-event (->stripe deps) event)
+        {:keys [id object status customer]} (re/subject stripe-event)
+        account                             (account/by-customer-id (->db deps) customer)]
     (when (= object "bank_account")
       (cond-> ((juxt event/report event/notify) (event/key event)
                {:params       {:account-id (td/id account)
                                :status     status}
                 :triggered-by event})
         (= status "verification_failed")
-        (conj [:db.fn/retractEntity [:stripe-customer/customer-id customer]])))))
+        (conj (events/delete-source customer id event))))))

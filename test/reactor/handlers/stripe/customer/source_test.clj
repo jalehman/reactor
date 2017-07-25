@@ -58,10 +58,14 @@
             (is (= (td/id event) (-> ev' event/triggered-by td/id))
                 "has triggered-by set")))
 
-        (testing "transaction will remove the customer entity"
-          (let [tx' (tb/find-by vector? tx)]
-            (is (= :db.fn/retractEntity (first tx')) "will retract the entity")
-            (is (= 2 (count (second tx'))) "is a lookup ref")))))))
+        (testing "transaction will produce an event to delete the source"
+          (let [ev (tb/find-by event/job? tx)]
+            (is (= (event/key ev) :stripe.customer.source/delete)
+                "produces an event to delete the source")
+            (is (= (customer/id customer) (-> ev event/params :customer))
+                "the customer param is correctly set")
+            (is (= subj (-> ev event/params :source-id))
+                "the source-id param is correctly set")))))))
 
 
 (deftest verification-succeeded
