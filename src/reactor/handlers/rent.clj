@@ -49,7 +49,8 @@
                    {:params       {:member-license-id member-license-id
                                    :amount            amount}
                     :triggered-by event})
-     payment]))
+     {:db/id                        member-license-id
+      :member-license/rent-payments payment}]))
 
 
 ;; =============================================================================
@@ -73,28 +74,32 @@
          [?l :member-license/unit ?u]
          [?l :member-license/price ?p]
          [?l :member-license/commencement ?c]
+         [?l :member-license/rent-payments ?py]
          ;; not on autopay
          [(missing? $ ?l :member-license/subscription-id)]
          ;; license has commenced
-         [(.before ^java.util.Date ?c ?period)]] ; in other words, now is after commencement
+         [(.before ^java.util.Date ?c ?period)] ; now is after commencement
+         ]
        db period))
 
 
 (defn create-payment-events
   [db event period]
   (let [actives (active-licenses db period)]
-    (mapv
-     (fn [[member-license-id amount]]
-       (let [ml    (d/entity db member-license-id)
-             tz    (member-license/time-zone ml)
-             start (date/beginning-of-day period tz)
-             end   (date/end-of-month start tz)]
-         (event/job :rent-payment/create {:params       {:start             start
-                                                         :end               end
-                                                         :amount            amount
-                                                         :member-license-id member-license-id}
-                                          :triggered-by event})))
-     actives)))
+    (->> (mapv
+          (fn [[member-license-id amount]]
+            (let [ml    (d/entity db member-license-id)
+                  tz    (member-license/time-zone ml)
+                  start (date/beginning-of-day period tz)
+                  end   (date/end-of-month start tz)]
+              (when (empty? (member-license/payment-within db ml period))
+                (event/job :rent-payment/create {:params       {:start             start
+                                                                :end               end
+                                                                :amount            amount
+                                                                :member-license-id member-license-id}
+                                                 :triggered-by event}))))
+          actives)
+         (remove nil?))))
 
 
 (defmethod dispatch/job :rent-payments/create-all [deps event params]
