@@ -47,7 +47,7 @@
 
 
 (defn- same-event? [e1 e2]
-  (and (= (td/id e1) (td/id e2))))
+  (= (:db/id e1) (:db/id e2)))
 
 
 (defn- gen-tx [dispatch deps event]
