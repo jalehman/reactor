@@ -46,7 +46,7 @@
   (let [order   (order/by-subscription-id (->db deps) subs-id)
         service (order/service order)
         account (order/account order)]
-    (assert (some? (order/price order)) "Order has no price; cannot send email.")
+    (assert (some? (order/computed-price order)) "Order has no price; cannot send email.")
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -54,7 +54,7 @@
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p (format "This is a friendly reminder that your monthly payment ($%.2f) for %s is being processed and should post shortly."
-                    (order/price order) (service/name service)))
+                    (order/computed-price order) (service/name service)))
       (mm/sig))
      {:uuid (event/uuid event)})))
 
@@ -94,7 +94,7 @@
 
 (defmethod invoice-created :service [deps event stripe-event]
   (let [order   (order/by-subscription-id (->db deps) (ic/subs-id stripe-event))
-        payment (payment/create (order/price order) (order/account order)
+        payment (payment/create (order/computed-price order) (order/account order)
                                 :for :payment.for/order
                                 :invoice-id (re/subject-id stripe-event))]
     [(order/add-payment order payment)

@@ -84,7 +84,7 @@
           (testing "the payment is valid"
             (let [py (tb/find-by :payment/amount tx)]
               (is (> (payment/amount py) 0))
-              (is (= (order/price order) (payment/amount py))
+              (is (= (order/computed-price order) (payment/amount py))
                   "the payment has the same price as the order")
               (is (= (payment/payment-for py) :payment.for/order))
               (is (= (re/subject-id event) (payment/invoice-id py)))
