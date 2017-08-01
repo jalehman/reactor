@@ -52,7 +52,7 @@
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p (format "Unfortunately, your recurring payment of $%.2f for <b>%s</b> has failed."
-                    (order/price order) (service/desc service)))
+                    (order/computed-price order) (service/desc service)))
       (mm/p "We'll try the payment again within the next couple of days; in the meantime, please ensure that your payment source has sufficient funds.")
       (mm/sig))
      {:uuid (event/uuid event)})))
@@ -112,7 +112,7 @@
        (sm/fields
         (sm/field "Account" (account/email account) true)
         (sm/field "Service" (service/desc service) true)
-        (sm/field "Amount" (order/price order) true)))))))
+        (sm/field "Amount" (order/computed-price order) true)))))))
 
 
 (defmethod dispatch/report ::notify.service.final [deps event {:keys [invoice]}]
@@ -132,7 +132,7 @@
        (sm/fields
         (sm/field "Account" (account/email account) true)
         (sm/field "Service" (service/desc service) true)
-        (sm/field "Amount" (order/price order) true)))))))
+        (sm/field "Amount" (order/computed-price order) true)))))))
 
 
 ;; =============================================================================
