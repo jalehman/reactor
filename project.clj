@@ -1,4 +1,4 @@
-(defproject starcity/reactor "0.4.0"
+(defproject starcity/reactor "0.4.1"
   :description "Transactional event processing queue."
   :url "https://github.com/starcity-properties/reactor"
   :license {:name "Eclipse Public License"
@@ -8,9 +8,7 @@
                  [org.clojure/tools.nrepl "0.2.12"]
                  [org.clojure/tools.cli "0.3.5"]
                  ;; db
-                 [com.datomic/datomic-pro "0.9.5544"]
                  [starcity/blueprints "1.10.2" :exclusions [com.datomic/datomic-free]]
-                 [org.postgresql/postgresql "9.4.1211"]
                  ;; services
                  [starcity/ribbon "0.6.0"]
                  [starcity/mailer "0.1.0"]
@@ -25,11 +23,7 @@
 
   :plugins [[s3-wagon-private "1.2.0"]]
 
-  :repositories {"my.datomic.com" {:url      "https://my.datomic.com/repo"
-                                   :username :env/datomic_username
-                                   :password :env/datomic_password}
-
-                 "releases" {:url        "s3://starjars/releases"
+  :repositories {"releases" {:url        "s3://starjars/releases"
                              :username   :env/aws_access_key
                              :passphrase :env/aws_secret_key}}
 
