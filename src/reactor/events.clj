@@ -102,6 +102,21 @@
         :ret map?)
 
 
+(defn initiate-refund
+  "Initiate the security deposit refund procedure."
+  [deposit amount reasons]
+  (event/job :deposit/refund {:params (tb/assoc-when
+                                       {:deposit-id (td/id deposit)
+                                        :amount     amount}
+                                       :reasons reasons)}))
+
+(s/fdef initiate-refund
+        :args (s/cat :deposit p/entity?
+                     :amount number?
+                     :reasons (s/or :nothing nil? :string string?))
+        :ret map?)
+
+
 ;; =============================================================================
 ;; Newsletter
 ;; =============================================================================

@@ -72,7 +72,8 @@
           @(d/transact-async conn tx)))
       (catch Throwable t
         (timbre/error t (event/key event) (event->map event))
-        @(d/transact-async conn [(event/failed event)])))))
+        (let [err-tx (get (ex-data t) :tx)]
+          @(d/transact-async conn (concat [(event/failed event)] err-tx)))))))
 
 
 (defn- start-queue!

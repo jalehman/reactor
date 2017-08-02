@@ -86,7 +86,6 @@
 
         (testing "produces internal notification event"
           (let [ev (tb/find-by event/report? tx)]
-            (println ev)
             (is (= (td/id event) (-> ev event/triggered-by td/id)))
             (is (= :reactor.handlers.stripe.charge.failed/notify.deposit (event/key ev)))
 
