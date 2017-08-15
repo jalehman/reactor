@@ -61,7 +61,7 @@
 (defmethod dispatch/stripe :stripe.event.charge/succeeded [deps event _]
   (let [se  (common/fetch-event (->stripe deps) event)
         sid (re/subject-id se)
-        ent (or (payment/by-charge-id (->db deps) sid)
+        ent (or (d/entity (->db deps) [:stripe/charge-id sid])
                 (charge/by-id (->db deps) sid))]
     (if (charge? ent)
       (assert (not (charge/succeeded? ent)) "Charge has already succeeded; not processing.")
