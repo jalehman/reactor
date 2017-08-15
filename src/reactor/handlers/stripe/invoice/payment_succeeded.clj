@@ -92,7 +92,15 @@
     (payment/is-paid payment)))
 
 
+(defn- linked-invoice? [deps stripe-event]
+  (let [invoice (re/subject-id stripe-event)]
+    (or (rent-payment/by-invoice-id (->db deps) invoice)
+        (try (payment/by-invoice-id (->db deps) invoice)
+             (catch Throwable _ nil)))))
+
+
 (defmethod dispatch/stripe :stripe.event.invoice/payment-succeeded
   [deps event stripe-event]
   (let [stripe-event (common/fetch-event (->stripe deps) event)]
-    (payment-succeeded deps event stripe-event)))
+    (when (linked-invoice? deps stripe-event)
+      (payment-succeeded deps event stripe-event))))
