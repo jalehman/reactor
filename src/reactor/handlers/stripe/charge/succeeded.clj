@@ -4,6 +4,7 @@
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
             [blueprints.models.rent-payment :as rent-payment]
+            [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
