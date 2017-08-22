@@ -191,9 +191,9 @@
 
 (defn rent-payment-made
   "A member has paid his/her rent by ACH."
-  [account rent-payment]
+  [account payment]
   (event/job :rent-payment.payment/ach {:params {:account-id (td/id account)
-                                                 :payment-id (td/id rent-payment)}}))
+                                                 :payment-id (td/id payment)}}))
 
 (s/fdef rent-payment-made
         :args (s/cat :account p/entity? :payment p/entity?)

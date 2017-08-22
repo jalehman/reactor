@@ -1,20 +1,17 @@
 (ns reactor.handlers.rent
-  (:require [blueprints.models
-             [event :as event]
-             [member-license :as member-license]
-             [rent-payment :as rent-payment]]
+  (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
+            [blueprints.models.member-license :as member-license]
+            [blueprints.models.payment :as payment]
             [datomic.api :as d]
+            [mailer.core :as mailer]
+            [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
-            [toolbelt.date :as date]
-            [mailer.core :as mailer]
-            [blueprints.models.account :as account]
-            [mailer.message :as mm]
-            [toolbelt.datomic :as td]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
-            [blueprints.models.charge :as charge]))
-
+            [toolbelt.date :as date]
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Create Payment
@@ -44,7 +41,13 @@
 
 (defmethod dispatch/job :rent-payment/create
   [deps event {:keys [start end amount member-license-id] :as params}]
-  (let [payment (rent-payment/create amount start end :rent-payment.status/due)]
+  (let [license (d/entity (->db deps) member-license-id)
+        account (member-license/account license)
+        payment (payment/create amount account
+                                :pstart start
+                                :pend end
+                                :status :payment.status/due
+                                :for :payment.for/rent)]
     [(event/notify :rent-payment/create
                    {:params       {:member-license-id member-license-id
                                    :amount            amount}
@@ -114,8 +117,7 @@
 
 (defmethod dispatch/report :rent-payment.payment/ach
   [deps event {:keys [account-id payment-id]}]
-  (let [[account payment] (td/entities (->db deps) account-id payment-id)
-        charge            (rent-payment/charge payment)]
+  (let [[account payment] (td/entities (->db deps) account-id payment-id)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -123,17 +125,17 @@
      (sm/msg
       (sm/success
        (sm/title "View Payment on Stripe"
-                 (format "https://dashboard.stripe.com/payments/%s" (charge/id charge)))
+                 (format "https://dashboard.stripe.com/payments/%s" (payment/charge-id payment)))
        (sm/text (format "%s has paid his/her rent via ACH" (account/full-name account)))
        (sm/fields
         (sm/field "Amount"
-                  (str "$" (rent-payment/amount payment))
+                  (str "$" (payment/amount payment))
                   true)
         (sm/field "Period Start"
-                  (date/short-date (rent-payment/period-start payment))
+                  (date/short-date (payment/period-start payment))
                   true)
         (sm/field "Period End"
-                  (date/short-date (rent-payment/period-end payment))
+                  (date/short-date (payment/period-end payment))
                   true)))))))
 
 
