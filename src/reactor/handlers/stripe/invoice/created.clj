@@ -4,7 +4,6 @@
             [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
-            [blueprints.models.rent-payment :as rent-payment]
             [blueprints.models.service :as service]
             [clj-time.coerce :as c]
             [clojure.spec :as s]
@@ -84,9 +83,10 @@
 
 (defmethod invoice-created :rent [deps event stripe-event]
   (let [license (member-license/by-subscription-id (->db deps) (ic/subs-id stripe-event))
+        account (member-license/account license)
         pstart  (period-start license stripe-event)
-        payment (rent-payment/autopay-payment license (re/subject-id stripe-event) pstart)
-        account (member-license/account license)]
+        amount  (/ (:amount_due (re/subject stripe-event)) 100)
+        payment (payment/autopay license amount (re/subject-id stripe-event) pstart)]
     [(member-license/add-rent-payments license payment)
      (event/notify ::notify.rent {:params       {:account-id (td/id account)}
                                   :triggered-by event})]))

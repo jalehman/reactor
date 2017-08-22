@@ -2,8 +2,9 @@
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
+            [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
-            [blueprints.models.rent-payment :as rent-payment]
+            [blueprints.models.service :as service]
             [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]
@@ -14,11 +15,7 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [ribbon.event :as re]
-            [taoensso.timbre :as timbre]
-            [toolbelt.datomic :as td]
-            [blueprints.models.order :as order]
-            [blueprints.models.service :as service]))
-
+            [taoensso.timbre :as timbre]))
 
 ;; =============================================================================
 ;; Notify
@@ -82,10 +79,10 @@
 
 
 (defmethod dispatch/report ::notify.rent [deps event {:keys [invoice]}]
-  (let [payment (rent-payment/by-invoice-id (->db deps) invoice)
-        license (rent-payment/member-license payment)
+  (let [payment (payment/by-invoice-id (->db deps) invoice)
+        license (member-license/by-invoice-id (->db deps) invoice)
         account (member-license/account license)
-        managed (member-license/managed-account-id license)]
+        managed (member-license/rent-connect-id license)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -158,26 +155,23 @@
     (>= attempt-count max-payment-attempts)))
 
 
-(defn- cancel-autopay
-  "Remove the existing autopay `payment`, create a new non-autopay payment and
-  create an event to delete the subscription."
-  [event payment stripe-event]
-  (let [license (rent-payment/member-license payment)]
-    [[:db.fn/retractEntity (td/id payment)]
-     (rent-payment/create (rent-payment/amount payment)
-                          (rent-payment/period-start payment)
-                          (rent-payment/period-end payment)
-                          :rent-payment.status/due
-                          :due-date (rent-payment/due-date payment))]))
+(defn- autopay->normal-payment
+  "Remove autopay-specific attributes of the `payment`"
+  [payment]
+  [[:db/retract payment :payment/paid-on (payment/paid-on payment)]
+   [:db/retract payment :stripe/invoice-id (payment/invoice-id payment)]
+   [:db/add payment :payment/status :payment.status/failed]])
 
 
 (defmethod payment-failed :rent [deps event stripe-event]
-  (let [payment (rent-payment/by-invoice-id (->db deps) (re/subject-id stripe-event))]
+  (let [invoice-id (re/subject-id stripe-event)
+        payment    (payment/by-invoice-id (->db deps) invoice-id)
+        license    (member-license/by-invoice-id (->db deps) invoice-id)]
     (if (max-attempts-exceeded? stripe-event)
-      (cancel-autopay event payment stripe-event)
+      (autopay->normal-payment payment)
       (mapv
        (fn [topic]
-         (let [params {:member-license-id (-> payment rent-payment/member-license td/id)
+         (let [params {:member-license-id (:db/id license)
                        :invoice           (re/subject-id stripe-event)}]
            (event/create ::notify.rent {:params       params
                                         :triggered-by event

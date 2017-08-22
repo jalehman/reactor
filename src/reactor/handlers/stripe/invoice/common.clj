@@ -4,14 +4,11 @@
             [reactor.handlers.stripe.common :as common]
             [ribbon.event :as re]))
 
-;; TODO: Can remove the rent-payment portion when I migrate that to use unified
-;; payments.
 (defn- invoice-id->subs-id [db invoice-id]
-  (let [payment      (d/entity db [:stripe/invoice-id invoice-id])
-        rent-payment (d/entity db [:rent-payment/invoice-id invoice-id])]
+  (let [payment (d/entity db [:stripe/invoice-id invoice-id])]
     (if (some? payment)
       (:stripe/subs-id (:order/_payments payment))
-      (:member-license/subscription-id (:member-license/_rent-payments rent-payment)))))
+      (:member-license/subscription-id (:member-license/_rent-payments payment)))))
 
 
 (defn subs-id

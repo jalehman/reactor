@@ -1,21 +1,17 @@
 (ns reactor.handlers.rent-test
-  (:require [blueprints.models.member-license :as member-license]
-            [blueprints.models.event :as event]
-            [clj-time
-             [coerce :as c]
-             [core :as t]]
+  (:require [blueprints.models.event :as event]
+            [blueprints.models.member-license :as member-license]
+            [blueprints.models.payment :as payment]
+            [clj-time.coerce :as c]
+            [clj-time.core :as t]
             [clojure.core.async :as a]
             [clojure.test :refer :all]
             [datomic.api :as d]
-            [reactor
-             [dispatch :as dispatch]
-             [fixtures :as fixtures :refer [with-conn]]]
-            [reactor.handlers
-             [helpers :as helpers]
-             [rent :as rent]]
-            [toolbelt
-             [core :as tb]
-             [predicates :as p]]))
+            [reactor.fixtures :as fixtures :refer [with-conn]]
+            [reactor.handlers.helpers :as helpers]
+            [reactor.handlers.rent :as rent]
+            [toolbelt.core :as tb]
+            [toolbelt.predicates :as p]))
 
 (def test-licenses
   [;; valid license
@@ -123,12 +119,12 @@
         (is (= 2 (count tx))))
 
       (testing "produces a transaction with a valid rent payment"
-        (let [py (tb/find-by :rent-payment/status tx)]
+        (let [py (:member-license/rent-payments (tb/find-by :member-license/rent-payments tx))]
           (is (map? py))
-          (is (= (:rent-payment/status py) :rent-payment.status/due))
-          (is (= start (:rent-payment/period-start py)))
-          (is (= end (:rent-payment/period-end py)))
-          (is (= 2100.0 (:rent-payment/amount py)))))
+          (is (= (payment/status py) :payment.status/due))
+          (is (= start (payment/period-start py)))
+          (is (= end (payment/period-end py)))
+          (is (= 2100.0 (payment/amount py)))))
 
       (testing "produces a transaction with a notify event"
         (let [ev' (tb/find-by :event/key tx)]

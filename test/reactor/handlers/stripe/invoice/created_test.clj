@@ -4,18 +4,16 @@
             [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
-            [blueprints.models.rent-payment :as rent-payment]
             [blueprints.models.service :as service]
             [clojure.core.async :as a]
             [clojure.test :refer :all]
             [datomic.api :as d]
             [mock.mock :as mock]
             mock.stripe.event
-            [reactor.dispatch :as dispatch]
             [reactor.fixtures :as fixtures :refer [with-conn]]
             [reactor.handlers.helpers :as helpers]
             [reactor.handlers.stripe.invoice.common :as ic]
-            [reactor.handlers.stripe.invoice.created]
+            reactor.handlers.stripe.invoice.created
             [reactor.handlers.stripe.test-utils :as tu]
             [ribbon.event :as re]
             [toolbelt.core :as tb]
@@ -51,7 +49,7 @@
           (testing "a rent payment is added to the member license"
             (let [py (first (:member-license/rent-payments (tb/find-by :member-license/rent-payments tx)))]
               (is (p/entity? py))
-              (is (= (rent-payment/invoice py) (re/subject-id event))
+              (is (= (payment/invoice-id py) (re/subject-id event))
                   "the invoice id made it onto the payment")))
 
           (testing "an event to notify the customer is created"

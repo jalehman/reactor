@@ -2,7 +2,6 @@
   (:require [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
-            [blueprints.models.rent-payment :as rent-payment]
             [blueprints.models.service :as service]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
@@ -15,7 +14,6 @@
             [reactor.handlers.stripe.test-utils :as tu]
             [ribbon.event :as re]
             [toolbelt.datomic :as td]))
-
 
 (use-fixtures :once fixtures/conn-fixture)
 
@@ -32,13 +30,18 @@
       (testing "invoices associated with rent payments"
         (let [license  (mock/member-license-tx :sub-id (ic/subs-id stripe-event))
               account  (mock/account-tx :license (td/id license))
-              payment  (rent-payment/autopay-payment license (re/subject-id stripe-event)
-                                                     (c/to-date (t/date-time 2017 1 1)))
+              payment  (payment/create 2100.0 account
+                                       :for :payment.for/rent
+                                       :pstart (c/to-date (t/date-time 2017 1 1))
+                                       :pend (java.util.Date.)
+                                       :paid-on (java.util.Date.)
+                                       :invoice-id (re/subject-id stripe-event)
+                                       :due (java.util.Date.))
               {tx :tx} (scenario conn account license (member-license/add-rent-payments license payment))]
 
           (is (map? tx) "produces a single entity update")
-          (is (= (-> tx :rent-payment/charge :charge/stripe-id)
-                 (:charge (re/subject stripe-event)))
+
+          (is (= (payment/charge-id tx) (:charge (re/subject stripe-event)))
               "the charge id is added to the charge entity on the rent payment")))
 
       (testing "invoices associated with service order payments"

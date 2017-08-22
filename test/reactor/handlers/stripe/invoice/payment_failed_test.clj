@@ -1,8 +1,8 @@
 (ns reactor.handlers.stripe.invoice.payment-failed-test
-  (:require [blueprints.models.member-license :as member-license]
+  (:require [blueprints.models.event :as event]
+            [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
-            [blueprints.models.rent-payment :as rent-payment]
             [blueprints.models.service :as service]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
@@ -12,13 +12,11 @@
             mock.stripe.event
             [reactor.fixtures :as fixtures :refer [with-conn]]
             [reactor.handlers.stripe.invoice.common :as ic]
-            [reactor.handlers.stripe.invoice.payment-failed]
+            reactor.handlers.stripe.invoice.payment-failed
             [reactor.handlers.stripe.test-utils :as tu]
-            [blueprints.models.event :as event]
             [ribbon.event :as re]
             [toolbelt.core :as tb]
             [toolbelt.datomic :as td]))
-
 
 (use-fixtures :once fixtures/conn-fixture)
 
@@ -40,8 +38,13 @@
       (testing "invoices associated with rent payments"
         (let [license (mock/member-license-tx :sub-id (ic/subs-id stripe-event))
               account (mock/account-tx :license (td/id license))
-              payment (rent-payment/autopay-payment license (re/subject-id stripe-event)
-                                                    (c/to-date (t/date-time 2017 1 1)))]
+              payment (payment/create 2100.0 account
+                                      :for :payment.for/rent
+                                      :pstart (c/to-date (t/date-time 2017 1 1))
+                                      :pend (java.util.Date.)
+                                      :paid-on (java.util.Date.)
+                                      :invoice-id (re/subject-id stripe-event)
+                                      :due (java.util.Date.))]
 
           (testing "invoices that have not exceeded the maximum number of attempts"
             (let [{tx :tx :as out} (scenario conn account license (member-license/add-rent-payments license payment))]
@@ -64,34 +67,37 @@
 
 
           (testing "invoices that HAVE exceeded the maximum number of attempts"
-            (let [stripe-event     (assoc-in stripe-event [:data :object :attempt_count] rent-payment/max-autopay-failures)
+            (let [stripe-event     (assoc-in stripe-event [:data :object :attempt_count] payment/max-autopay-failures)
                   scenario         (partial tu/speculate-scenario :stripe.event.invoice/payment-failed stripe-event)
                   {tx :tx :as out} (scenario conn account license (member-license/add-rent-payments license payment))]
 
               (testing "transaction shape"
                 (is (vector? tx))
-                (is (= 2 (count tx))))
+                (is (= 3 (count tx))))
 
-              (testing "will retract payment"
-                (let [[_ v] (tb/find-by (comp (partial = :db.fn/retractEntity) first) tx)]
-                  (is (integer? v))))
+              (testing "will retract `:payment/paid-on`"
+                (let [[op e attr v] (tb/find-by (comp #(contains? % :payment/paid-on) set) tx)]
+                  (is (= op :db/retract))
+                  (is (= v (payment/paid-on payment)))))
 
-              (testing "will create a new payment"
-                (let [py (tb/find-by :rent-payment/status tx)]
-                  (is (= :rent-payment.status/due (rent-payment/status py)))
-                  (is (= (rent-payment/period-start py) (rent-payment/period-start payment)))
-                  (is (= (rent-payment/period-end py) (rent-payment/period-end payment)))
-                  (is (= (rent-payment/due-date py) (rent-payment/due-date payment)))
-                  (is (= (rent-payment/amount py) (rent-payment/amount payment)))))))))
+              (testing "will retract `:stripe/invoice-id`"
+                (let [[op e attr v] (tb/find-by (comp #(contains? % :stripe/invoice-id) set) tx)]
+                  (is (= op :db/retract))
+                  (is (= v (re/subject-id stripe-event)))))
+
+              (testing "will add failed status"
+                (let [[op e attr v] (tb/find-by (comp #(contains? % :payment/status) set) tx)]
+                  (is (= op :db/add))
+                  (is (= v :payment.status/failed))))))))
 
       (testing "invoices associated with a service order"
-        (let [account  (mock/account-tx)
-              service  (service/customize-furniture (d/db conn))
-              order    (assoc (order/create account service {:price 50.0})
-                              :stripe/subs-id (ic/subs-id stripe-event))
-              payment  (payment/create 50.0 account
-                                       :for :payment.for/order
-                                       :invoice-id (re/subject-id stripe-event))]
+        (let [account (mock/account-tx)
+              service (service/customize-furniture (d/db conn))
+              order   (assoc (order/create account service {:price 50.0})
+                             :stripe/subs-id (ic/subs-id stripe-event))
+              payment (payment/create 50.0 account
+                                      :for :payment.for/order
+                                      :invoice-id (re/subject-id stripe-event))]
 
           (testing "invoices that have NOT exceeded the maximum number of attempts"
             (let [{tx :tx :as out} (scenario conn account order payment)]
@@ -118,7 +124,7 @@
                   (is (= :reactor.handlers.stripe.invoice.payment-failed/notify.service (event/key ev)))))))
 
           (testing "invoices that HAVE exceeded the maximum number of attempts"
-            (let [stripe-event     (assoc-in stripe-event [:data :object :attempt_count] rent-payment/max-autopay-failures)
+            (let [stripe-event     (assoc-in stripe-event [:data :object :attempt_count] payment/max-autopay-failures)
                   scenario         (partial tu/speculate-scenario :stripe.event.invoice/payment-failed stripe-event)
                   {tx :tx :as out} (scenario conn account order payment)]
 

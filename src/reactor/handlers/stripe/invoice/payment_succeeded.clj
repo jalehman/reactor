@@ -3,7 +3,6 @@
             [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.payment :as payment]
-            [blueprints.models.rent-payment :as rent-payment]
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
@@ -23,7 +22,7 @@
 (defmethod dispatch/notify ::notify.rent [deps event {:keys [invoice]}]
   (let [license (member-license/by-invoice-id (->db deps) invoice)
         account (member-license/account license)
-        payment (rent-payment/by-invoice-id (->db deps) invoice)]
+        payment (payment/by-invoice-id (->db deps) invoice)]
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -32,7 +31,7 @@
       (mm/greet (account/first-name account))
       (mm/p
        (format "This is a friendly reminder to let you know that your rent payment of $%.2f has been successfully paid."
-               (rent-payment/amount payment)))
+               (payment/amount payment)))
       (mm/p "Thanks for using Autopay!")
       (mm/sig))
      {:uuid (event/uuid event)})))
@@ -46,7 +45,7 @@
 (defmethod dispatch/report ::notify.rent [deps event {:keys [invoice]}]
   (let [license (member-license/by-invoice-id (->db deps) invoice)
         account (member-license/account license)
-        managed (member-license/managed-account-id license)]
+        managed (member-license/rent-connect-id license)]
     (slack/send
      (->slack deps)
      {:channel slack/ops
@@ -74,7 +73,7 @@
 
 
 (defmethod payment-succeeded :rent [deps event stripe-event]
-  (let [payment (rent-payment/by-invoice-id (->db deps) (re/subject-id stripe-event))]
+  (let [payment (payment/by-invoice-id (->db deps) (re/subject-id stripe-event))]
     (-> (mapv
          (fn [topic]
            (let [params {:invoice (re/subject-id stripe-event)}]
@@ -82,7 +81,7 @@
                                           :triggered-by event
                                           :topic        topic})))
          [:report :notify])
-        (conj (rent-payment/set-paid payment)))))
+        (conj (payment/is-paid payment)))))
 
 
 (defmethod payment-succeeded :service [deps event stripe-event]
@@ -94,9 +93,7 @@
 
 (defn- linked-invoice? [deps stripe-event]
   (let [invoice (re/subject-id stripe-event)]
-    (or (rent-payment/by-invoice-id (->db deps) invoice)
-        (try (payment/by-invoice-id (->db deps) invoice)
-             (catch Throwable _ nil)))))
+    (some? (payment/by-invoice-id (->db deps) invoice))))
 
 
 (defmethod dispatch/stripe :stripe.event.invoice/payment-succeeded

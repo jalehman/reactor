@@ -77,7 +77,6 @@
          [?l :member-license/unit ?u]
          [?l :member-license/price ?p]
          [?l :member-license/commencement ?c]
-         [?l :member-license/rent-payments ?py]
          ;; not on autopay
          [(missing? $ ?l :member-license/subscription-id)]
          ;; license has commenced
