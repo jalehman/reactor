@@ -3,8 +3,6 @@
             [blueprints.models.event :as event]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
-            [blueprints.models.rent-payment :as rent-payment]
-            [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
@@ -16,17 +14,11 @@
 ;; =============================================================================
 
 
-(defn- charge? [e]
-  (contains? e :charge/status))
-
-
 (defmulti process-successful-charge
   "Using the charge's type, produce a transaction to update any entities (if
   any) that need to be updated in the db."
-  (fn [deps ent event]
-    (if (charge? ent)
-      (charge/type (->db deps) ent)
-      (payment/payment-for ent))))
+  (fn [deps payment event]
+    (payment/payment-for payment)))
 
 
 (defmethod process-successful-charge :default [deps _ event]
@@ -34,14 +26,14 @@
                {:uuid (event/uuid event)}))
 
 
+;; invoice handlers take care of this
 (defmethod process-successful-charge :payment.for/deposit [deps payment event]
-  ;; Nothing to do!
   [])
 
 
-(defmethod process-successful-charge :rent [deps charge event]
-  (let [py (rent-payment/by-charge (->db deps) charge)]
-    [(rent-payment/set-paid py)]))
+(defmethod process-successful-charge :payment.for/rent [deps payment event]
+  ;; invoice handlers take care of this
+  [])
 
 
 (defmethod process-successful-charge :payment.for/order [deps payment event]
@@ -57,17 +49,12 @@
   (-> stripe-event re/subject :invoice some?))
 
 
-;; NOTE: The only reason we're checking if the entity is a payment or charge is
-;; because rent payments have not yet been migrated to use payments.
 (defmethod dispatch/stripe :stripe.event.charge/succeeded [deps event _]
-  (let [se  (common/fetch-event (->stripe deps) event)
-        sid (re/subject-id se)
-        ent (or (d/entity (->db deps) [:stripe/charge-id sid])
-                (charge/by-id (->db deps) sid))]
-    (if (charge? ent)
-      (assert (not (charge/succeeded? ent)) "Charge has already succeeded; not processing.")
-      (assert (not (payment/paid? ent)) "Payment has already succeeded; not processing."))
+  (let [se        (common/fetch-event (->stripe deps) event)
+        charge-id (re/subject-id se)
+        payment   (payment/by-charge-id (->db deps) charge-id)]
+    (assert (not (payment/paid? payment)) "Payment has already succeeded; not processing.")
     (when-not (invoice-charge? se)
       (conj
-       (process-successful-charge deps ent event)
-       (if (charge? ent) (charge/succeeded ent) (payment/is-paid ent))))))
+       (process-successful-charge deps payment event)
+       (payment/is-paid payment)))))

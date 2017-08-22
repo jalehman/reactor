@@ -1,27 +1,22 @@
 (ns reactor.handlers.stripe.charge.failed-test
-  (:require [blueprints.models
-             [account :as account]
-             [charge :as charge]
-             [rent-payment :as rent-payment]
-             [security-deposit :as deposit]]
+  (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
+            [blueprints.models.member-license :as member-license]
+            [blueprints.models.payment :as payment]
+            [blueprints.models.security-deposit :as deposit]
             [clojure.core.async :as a]
             [clojure.test :refer :all]
             [datomic.api :as d]
             [mock.mock :as mock]
             mock.stripe.event
-            [reactor
-             [dispatch :as dispatch]
-             [fixtures :as fixtures :refer [with-conn]]]
+            [reactor.dispatch :as dispatch]
+            [reactor.fixtures :as fixtures :refer [with-conn]]
             [reactor.handlers.helpers :refer :all]
+            reactor.handlers.stripe.charge.failed
             [reactor.handlers.stripe.test-utils :as tu]
-            [reactor.handlers.stripe.charge.failed]
-            [blueprints.models.event :as event]
-            [toolbelt
-             [core :as tb]
-             [datomic :as td]
-             [predicates :as p]]
-            [blueprints.models.payment :as payment]
-            [blueprints.models.member-license :as member-license]))
+            [toolbelt.core :as tb]
+            [toolbelt.datomic :as td]
+            [toolbelt.predicates :as p]))
 
 (use-fixtures :once fixtures/conn-fixture)
 

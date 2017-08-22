@@ -1,22 +1,17 @@
 (ns reactor.handlers.stripe.charge.succeeded-test
-  (:require [blueprints.models
-             [charge :as charge]
-             [order :as order]
-             [payment :as payment]
-             [rent-payment :as rent-payment]
-             [security-deposit :as deposit]
-             [service :as service]]
+  (:require [blueprints.models.member-license :as member-license]
+            [blueprints.models.order :as order]
+            [blueprints.models.payment :as payment]
+            [blueprints.models.security-deposit :as deposit]
+            [blueprints.models.service :as service]
             [clojure.test :refer :all]
             [datomic.api :as d]
             [mock.mock :as mock]
-            [mock.stripe.event]
+            mock.stripe.event
             [reactor.fixtures :as fixtures :refer [with-conn]]
             [reactor.handlers.stripe.test-utils :as tu]
-            [reactor.handlers.stripe.charge.succeeded]
-            [toolbelt
-             [core :as tb]
-             [datomic :as td]]))
-
+            [toolbelt.core :as tb]
+            [toolbelt.datomic :as td]))
 
 (use-fixtures :once fixtures/conn-fixture)
 
@@ -48,24 +43,26 @@
 (deftest can-handle-successful-charges
   (with-conn conn
 
-    (testing "charges that have already succeeded cannot be processed more than once"
+    (testing "payment that have already succeeded cannot be processed more than once"
       (let [account (mock/account-tx)
-            charge  (charge/create account mock-subj 10.0
-                                   :status :charge.status/succeeded)]
-        (is (thrown-with-msg? java.lang.AssertionError #"Charge has already succeeded"
-                              (scenario conn account charge)))))
+            payment (payment/create 10.0 account
+                                    :charge-id mock-subj
+                                    :status :payment.status/paid)]
+        (is (thrown-with-msg? java.lang.AssertionError #"Payment has already succeeded"
+                              (scenario conn account payment)))))
 
-    (testing "successful charges not associated with a rent payment, service order or deposit"
+    (testing "successful payments not associated with a rent payment, service order or deposit"
       (let [account  (mock/account-tx)
-            charge   (charge/create account mock-subj 10.0)
-            {tx :tx} (scenario conn account charge)]
+            payment  (payment/create 10.0 account
+                                     :charge-id mock-subj)
+            {tx :tx} (scenario conn account payment)]
 
         (testing "transaction validity"
           (is (sequential? tx))
           (is (= 1 (count tx))))
 
         (testing "only marked as succeeded"
-          (is (= :charge.status/succeeded (-> tx first :charge/status))))))
+          (is (= :payment.status/paid (-> tx first :payment/status))))))
 
 
     (testing "successful security deposit charges"
@@ -83,38 +80,37 @@
 
         #_(testing "contains a security deposit with updated amount received"
             (let [x (tb/find-by :security-deposit/amount-received tx)]
-            (is (< (deposit/amount-received deposit) (deposit/amount-received x))
-                "the amount received before the event is less than after the event")
-            (is (= (int (charge/amount charge)) (- (deposit/amount-received x)
-                                                   (deposit/amount-received deposit)))
-                "the difference of the before and after deposit amount is equal to the charge amount")))
+              (is (< (deposit/amount-received deposit) (deposit/amount-received x))
+                  "the amount received before the event is less than after the event")
+              (is (= (int (charge/amount charge)) (- (deposit/amount-received x)
+                                                     (deposit/amount-received deposit)))
+                  "the difference of the before and after deposit amount is equal to the charge amount")))
 
         (testing "the charge is marked as succeeded"
           (let [ch (tb/find-by :payment/status tx)]
             (is (= :payment.status/paid (:payment/status ch)))))))
 
 
-    (testing "successful rent payment charges"
+    (testing "successful rent payments"
       (let [license  (mock/member-license-tx :ref -1)
             account  (mock/account-tx :license (td/id license))
-            py       (rent-payment/create 2100.0 (java.util.Date.) (java.util.Date.)
-                                          :rent-payment.status/due
-                                          :due-date (java.util.Date.)
-                                          :method :rent-payment.method/ach)
-            charge   (charge/create account mock-subj 2100.0)
-            {tx :tx} (scenario conn license account charge (assoc py :rent-payment/charge (td/id charge)))]
+            payment  (payment/create 2100.0 account
+                                     :charge-id mock-subj
+                                     :pstart (java.util.Date.)
+                                     :pend (java.util.Date.)
+                                     :status :payment.status/due
+                                     :due (java.util.Date.)
+                                     :method :payment.method/stripe-charge)
+            {tx :tx} (scenario conn license account
+                               (member-license/add-rent-payments license payment))]
 
         (testing "tranasction validity"
           (is (sequential? tx))
-          (is (= 2 (count tx))))
+          (is (= 1 (count tx))))
 
         (testing "contains a rent payment that is considered paid"
-          (let [py (tb/find-by :rent-payment/status tx)]
-            (is (= :rent-payment.status/paid (rent-payment/status py)))))
-
-        (testing "the charge is marked as succeeded"
-          (let [ch (tb/find-by :charge/status tx)]
-            (is (= :charge.status/succeeded (:charge/status ch)))))))
+          (let [py (tb/find-by :payment/status tx)]
+            (is (payment/paid? py))))))
 
 
     (testing "successful service charges"
