@@ -19,7 +19,9 @@
                  [starcity/toolbelt "0.1.7" :exclusions [com.datomic/datomic-free]]
                  [com.taoensso/timbre "4.10.0"]
                  [aero "1.1.2"]
-                 [ring "1.6.1"]]
+                 [ring "1.6.1"]
+                 ;; dependency resolution
+                 [org.apache.httpcomponents/httpclient "4.5.5"]]
 
   :plugins [[s3-wagon-private "1.2.0"]]
 
