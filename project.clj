@@ -21,7 +21,7 @@
                  [aero "1.1.2"]
                  [ring "1.6.1"]
                  ;; dependency resolution
-                 [org.apache.httpcomponents/httpclient "4.5.5"]]
+                 [org.apache.httpcomponents/httpclient "4.5.3"]]
 
   :plugins [[s3-wagon-private "1.2.0"]]
 
