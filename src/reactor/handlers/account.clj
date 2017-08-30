@@ -267,7 +267,7 @@
       (mm/p (str "<b>" new-password "</b>"))
       (mm/p
        (format "After logging in <a href='%s'>here</a>, please change your password to something more memorable by clicking on <b>My Account</b> in the upper right-hand corner of the page." link))
-      (mm/p "If this was not you, please contact us at <a href='mailto:team@joinstarcity.com>team@joinstarcity.com</a>.")
+      (mm/p "If this was not you, please contact us at <a href='mailto:team@joinstarcity.com'>team@joinstarcity.com</a>.")
       (mm/sig))
      {:uuid (event/uuid event)})))
 
