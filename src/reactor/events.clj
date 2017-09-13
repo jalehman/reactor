@@ -163,12 +163,12 @@
 ;; =============================================================================
 
 
-(defn place-order
-  "Place an `order`."
+(defn process-order
+  "Process an `order`."
   [order]
-  (event/job :order/place {:params {:order-id (td/id order)}}))
+  (event/job :order/process {:params {:order-id (td/id order)}}))
 
-(s/fdef place-order
+(s/fdef process-order
         :args (s/cat :order p/entity?)
         :ret map?)
 

@@ -47,12 +47,12 @@
 ;; =============================================================================
 
 
-(defmulti place-order
+(defmulti process-order
   (fn [deps event order]
     (-> order order/service service/billed)))
 
 
-(defmethod place-order :default [_ event order]
+(defmethod process-order :default [_ event order]
   (let [account (order/account order)]
     (throw (ex-info "This order has an unknown billing method; cannot place!"
                     {:order   (td/id order)
@@ -74,7 +74,7 @@
                            :email (account/email account))))))
 
 
-(defmethod place-order :service.billed/once
+(defmethod process-order :service.billed/once
   [deps event order]
   (let [account (order/account order)
         price   (* (order/computed-price order) (or (order/quantity order) 1))
@@ -127,7 +127,7 @@
                                       :triggered-by event})))
 
 
-(defmethod place-order :service.billed/monthly [deps event order]
+(defmethod process-order :service.billed/monthly [deps event order]
   (let [account  (order/account order)
         cus-id   (customer/id (customer/by-account (->db deps) account))
         customer (<!!? (rcu/fetch (->stripe deps) cus-id))]
@@ -140,8 +140,8 @@
 ;;; Entry
 
 
-(defmethod dispatch/job :order/place [deps event {:keys [order-id]}]
+(defmethod dispatch/job :order/process [deps event {:keys [order-id]}]
   (let [order (d/entity (->db deps) order-id)]
-    (assert (some? (order/computed-price order)) "Order cannot be placed without a price!")
-    (assert (order/pending? order) "Order must have `:order.status/pending` status!")
-    (place-order deps event order)))
+    (assert (some? (order/computed-price order)) "Order cannot be processed without a price!")
+    (assert (order/placed? order) "Order must have `:order.status/placed` status!")
+    (process-order deps event order)))
