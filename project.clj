@@ -10,13 +10,13 @@
                  ;; db
                  [starcity/blueprints "1.11.0" :exclusions [com.datomic/datomic-free]]
                  ;; services
-                 [starcity/ribbon "0.6.0"]
+                 [starcity/ribbon "0.7.0"]
                  [starcity/mailer "0.1.0"]
                  ;; util
                  [starcity/customs "0.1.0"]
                  [clj-time "0.13.0"]
                  [mount "0.1.11"]
-                 [starcity/toolbelt "0.1.7" :exclusions [com.datomic/datomic-free]]
+                 [starcity/toolbelt "0.1.8" :exclusions [com.datomic/datomic-free]]
                  [com.taoensso/timbre "4.10.0"]
                  [aero "1.1.2"]
                  [ring "1.6.1"]
