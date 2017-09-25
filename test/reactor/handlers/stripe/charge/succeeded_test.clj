@@ -126,7 +126,7 @@
 
         (testing "tranasction validity"
           (is (sequential? tx))
-          (is (= 2 (count tx))))
+          (is (= 1 (count tx))))
 
         (testing "the payment is marked as paid"
           (let [py (tb/find-by :payment/status tx)]

@@ -164,7 +164,7 @@
   "Using the charge's type, produce a transaction to update any entities (if
   any) that need to be updated in the db."
   (fn [deps ent event]
-    (payment/payment-for ent)))
+    (payment/payment-for2 (->db deps) ent)))
 
 
 (defmethod process-failed-charge :default [deps _ event]

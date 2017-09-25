@@ -84,7 +84,7 @@
               (is (> (payment/amount py) 0))
               (is (= (order/computed-price order) (payment/amount py))
                   "the payment has the same price as the order")
-              (is (= (payment/payment-for py) :payment.for/order))
+              (is (= (:payment/for py) :payment.for/order))
               (is (= (re/subject-id event) (payment/invoice-id py)))
               (is (payment/invoice? py))
               (is (nil? (payment/charge-id py)) "the charge is not yet created")))

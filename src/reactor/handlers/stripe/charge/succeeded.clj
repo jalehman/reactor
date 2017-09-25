@@ -1,7 +1,5 @@
 (ns reactor.handlers.stripe.charge.succeeded
-  (:require [blueprints.models.charge :as charge]
-            [blueprints.models.event :as event]
-            [blueprints.models.order :as order]
+  (:require [blueprints.models.event :as event]
             [blueprints.models.payment :as payment]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
@@ -18,7 +16,7 @@
   "Using the charge's type, produce a transaction to update any entities (if
   any) that need to be updated in the db."
   (fn [deps payment event]
-    (payment/payment-for payment)))
+    (payment/payment-for2 (->db deps) payment)))
 
 
 (defmethod process-successful-charge :default [deps _ event]
@@ -37,12 +35,7 @@
 
 
 (defmethod process-successful-charge :payment.for/order [deps payment event]
-  (let [order (order/by-payment (->db deps) payment)]
-    (assert (#{:order.status/placed} (order/status order))
-            "Invalid state; order has not been placed.")
-    ;; this functionality is handled by the invoice events when we're dealing with invoices
-    (when-not (payment/invoice? payment)
-      [(order/is-charged order)])))     ; TODO: Add test for this datom
+  [])
 
 
 (defn- invoice-charge? [stripe-event]

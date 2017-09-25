@@ -1,12 +1,10 @@
 (ns reactor.handlers.order
   (:require [blueprints.models.account :as account]
-            [blueprints.models.charge :as charge]
             [blueprints.models.customer :as customer]
             [blueprints.models.event :as event]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
             [blueprints.models.service :as service]
-            [clojure.core.async :as a]
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
@@ -17,7 +15,6 @@
             [toolbelt.async :refer [<!!?]]
             [toolbelt.datomic :as td]
             [toolbelt.predicates :as p]))
-
 
 ;; =============================================================================
 ;; Helpers
@@ -83,8 +80,7 @@
                                 :for :payment.for/order
                                 :charge-id ch-id)]
     [(order/add-payment order py)
-     (order/is-placed order)
-     (charge/create account ch-id price) ; until we deprecate `charge` system-wide
+     (order/is-charged order)
      py]))
 
 
@@ -101,7 +97,7 @@
     [{:db/id          order-id
       :stripe/plan-id plan-id
       :stripe/subs-id (:id sub)}
-     (order/is-placed order)]))
+     (order/is-charged order)]))
 
 
 ;; Uses <service-code>-<price-in-cents> as a template for constructing unique
@@ -112,7 +108,7 @@
   (let [price     (int (* 100 (order/computed-price order)))
         plan-name (-> order order/service service/code)
         plan-id   (str plan-name "-" price)
-        existing  (a/<!! (rp/fetch (->stripe deps) plan-id))]
+        existing  (<!!? (rp/fetch (->stripe deps) plan-id))]
     (if (p/throwable? existing)
       (<!!? (rp/create! (->stripe deps) plan-id plan-name price :month))
       existing)))
@@ -133,8 +129,9 @@
         customer (<!!? (rcu/fetch (->stripe deps) cus-id))]
     (assert (#{"card"} (rcu/default-source-type customer))
             "Customer's default source must be a credit card before a subscription can be created.")
-    (event/job ::create-plan {:params       {:order-id (td/id order)}
-                              :triggered-by event})))
+    [(event/job ::create-plan {:params       {:order-id (td/id order)}
+                               :triggered-by event})
+     (order/is-processing order)]))
 
 
 ;;; Entry
