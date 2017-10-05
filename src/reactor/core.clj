@@ -102,5 +102,5 @@
                       (prod-config config)
                       (dev-config config))
                chan (a/chan (a/sliding-buffer (config/tx-report-buffer-size config)))]
-           (reactor/start! conn chan (deps/deps conf)))
+           (reactor/start! conn chan conf))
   :stop (reactor/stop! reactor))

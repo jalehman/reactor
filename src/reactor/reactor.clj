@@ -199,9 +199,10 @@
 
 (defn start!
   "Start a queue for each topic in `topics`."
-  [conn tx-report-ch deps]
+  [conn tx-report-ch conf]
   (let [mult            (a/mult tx-report-ch)
         tx-report-queue (install-report-queue conn tx-report-ch)
+        deps            (deps/deps conf)
         queues          (start-queues! conn mult deps)]
     (process-pending-events! conn deps)
     {:conn            conn
@@ -213,7 +214,7 @@
 (s/fdef start!
         :args (s/cat :conn p/conn?
                      :chan p/chan?
-                     :deps deps/deps?))
+                     :conf deps/config?))
 
 
 (defn stop!
