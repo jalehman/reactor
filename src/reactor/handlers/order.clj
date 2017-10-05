@@ -137,6 +137,10 @@
 ;;; Entry
 
 
+;; TODO: Order can be in anything but pending, charged, canceled status
+;; TODO: Set `:order/billed` date
+
+
 (defmethod dispatch/job :order/process [deps event {:keys [order-id]}]
   (let [order (d/entity (->db deps) order-id)]
     (assert (some? (order/computed-price order)) "Order cannot be processed without a price!")
