@@ -1,16 +1,14 @@
 (ns mock.mock
-  (:require [clj-time
-             [coerce :as c]
-             [core :as t]]
+  (:require [clj-time.coerce :as c]
+            [clj-time.core :as t]
             [clojure.core.async :as a]
             [datomic.api :as d]
-            [reactor.services
-             [community-safety :as cs]
-             [weebly :as weebly]]
-            [ribbon.core :as ribbon]
-            [toolbelt.core :as tb]
+            [mailer.core :as mailer]
+            [reactor.services.community-safety :as cs]
             [reactor.services.slack :as slack]
-            [mailer.core :as mailer]))
+            [reactor.services.weebly :as weebly]
+            [ribbon.core :as ribbon]
+            [toolbelt.core :as tb]))
 
 ;; =============================================================================
 ;; Helpers

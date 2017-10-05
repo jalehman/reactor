@@ -6,11 +6,81 @@
             [reactor.config :as config :refer [config]]
             [reactor.services.slack :as slack]
             [reactor.services.weebly :as weebly]
-            [ribbon.core :as ribbon]))
+            [ribbon.core :as ribbon]
+            [mock.mock :as mock]
+            [toolbelt.core :as tb]))
 
 
 ;; =============================================================================
-;; Spec
+;; Helpers
+;; =============================================================================
+
+
+;; =====================================
+;; Service Constructors
+
+(defn- community-safety [{api-key :api-key}]
+  (if (some? api-key)
+    (cs/community-safety api-key)
+    (mock/community-safety)))
+
+
+(defn- mailer [{:keys [api-key domain sender send-to]}]
+  (mailer/mailgun api-key domain (tb/assoc-when
+                                  {}
+                                  :sender sender
+                                  :send-to send-to)))
+
+
+(defn- slack [{:keys [webhook-url username channel]}]
+  (if (some? channel)
+    (slack/slack webhook-url username channel)
+    (slack/slack webhook-url username)))
+
+
+(defn- weebly [{:keys [site-id form-id]}]
+  (if (and (some? site-id) (some? form-id))
+    (weebly/weebly site-id form-id)
+    (mock/weebly)))
+
+
+(defn- stripe [{:keys [secret-key]}]
+  (if (some? secret-key)
+    (ribbon/stripe-connection secret-key)
+    (mock/stripe)))
+
+
+;; =====================================
+;; Config Spec
+
+(s/def :config/mailer
+  (s/keys :req-un [:mailer/api-key :mailer/domain]
+          :opt-un [:mailer/sender :mailer/send-to]))
+
+(s/def :config/slack
+  (s/keys :req-un [:slack/webhook-url :slack/username]
+          :opt-un [:slack/channel]))
+
+(s/def :config/community-safety
+  (s/keys :req-un [:community-safety/api-key]))
+
+(s/def :config/weebly
+  (s/keys :req-un [:weebly/site-id :weebly/form-id]))
+
+(s/def :config/stripe
+  (s/keys :req-un [:stripe/secret-key]))
+
+(s/def ::config
+  (s/keys :req-un [:config/mailer
+                   :config/slack
+                   ::public-hostname]
+          :opt-un [:config/community-safety
+                   :config/weebly
+                   :config/stripe]))
+
+
+;; =============================================================================
+;; Deps
 ;; =============================================================================
 
 
@@ -29,28 +99,19 @@
                    ::public-hostname]))
 
 
-;; =============================================================================
-;; Constructor
-;; =============================================================================
-
-
 (defn deps
   "Construct the dependencies map for Reactor to function."
-  [community-safety mailer slack weebly stripe public-hostname]
-  {:community-safety community-safety
-   :mailer           mailer
-   :slack            slack
-   :weebly           weebly
-   :stripe           stripe
-   :public-hostname  public-hostname})
+  [config]
+  (s/assert ::config config)
+  {:community-safety (community-safety (:community-safety config))
+   :mailer           (mailer (:mailer config))
+   :slack            (slack (:slack config))
+   :weebly           (weebly (:weebly config))
+   :stripe           (stripe (:stripe config))
+   :public-hostname  (:public-hostname config)})
 
 (s/fdef deps
-        :args (s/cat :community-safety ::community-safety
-                     :mailer ::mailer
-                     :slack ::slack
-                     :weebly ::weebly
-                     :stripe ::stripe
-                     :public-hostname ::public-hostname)
+        :args (s/cat :config ::config)
         :ret ::deps)
 
 

@@ -13,6 +13,7 @@
                  [starcity/ribbon "0.7.0"]
                  [starcity/mailer "0.1.0"]
                  ;; util
+                 [starcity/drawknife "0.2.0"]
                  [starcity/customs "0.1.0"]
                  [clj-time "0.13.0"]
                  [mount "0.1.11"]

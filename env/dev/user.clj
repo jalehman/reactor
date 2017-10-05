@@ -1,20 +1,9 @@
 (ns user
-  (:require [blueprints.models
-             [account :as account]
-             [license :as license]
-             [member-license :as member-license]
-             [order :as order]
-             [service :as service]]
-            [clj-time
-             [coerce :as c]
-             [core :as t]]
+  (:require [reactor.core :refer [conn]]
             [clojure.spec.test :as stest]
             [clojure.tools.namespace.repl :refer [refresh]]
-            [datomic.api :as d]
             [mount.core :as mount]
-            [reactor.core :refer [conn]]
-            [taoensso.timbre :as timbre]
-            [blueprints.models.event :as event]))
+            [taoensso.timbre :as timbre]))
 
 (timbre/refer-timbre)
 

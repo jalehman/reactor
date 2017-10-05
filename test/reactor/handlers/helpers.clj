@@ -9,12 +9,12 @@
 (defn deps
   "Produce event handler dependencies."
   [db & {:keys [safety mailer slack weebly stripe]}]
-  (-> (deps/deps (or safety (mock/community-safety))
-                 (or mailer (mock/mailer))
-                 (or slack (mock/slack))
-                 (or weebly (mock/weebly))
-                 (or stripe (mock/stripe))
-                 "https://joinstarcity.com")
+  (-> {:community-safety (or safety (mock/community-safety))
+       :mailer           (or mailer (mock/mailer))
+       :slack            (or slack (mock/slack))
+       :weebly           (or weebly (mock/weebly))
+       :stripe           (or stripe (mock/stripe))
+       :public-hostname  "https://joinstarcity.com"}
       (assoc :db db)))
 
 

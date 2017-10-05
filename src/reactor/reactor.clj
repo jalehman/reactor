@@ -181,23 +181,46 @@
    topics))
 
 
+(defn- install-report-queue
+  "On a separate thread, take values from the `tx-report-queue` over `conn` and
+  put them onto channel `c`. This is essantially just a `core.async` wrapper
+  around the `tx-report-queue`."
+  [conn c]
+  (a/thread
+    (try
+      (let [queue (d/tx-report-queue conn)]
+        (while true
+          (let [report (.take queue)]
+            (a/>!! c report))))
+      (catch Exception e
+        (timbre/error e "TX-REPORT-TAKE exception")
+        (throw e)))))
+
 
 (defn start!
   "Start a queue for each topic in `topics`."
-  [conn mult deps]
-  (let [queues (start-queues! conn mult deps)]
+  [conn tx-report-ch deps]
+  (let [mult            (a/mult tx-report-ch)
+        tx-report-queue (install-report-queue conn tx-report-ch)
+        queues          (start-queues! conn mult deps)]
     (process-pending-events! conn deps)
-    queues))
+    {:conn            conn
+     :tx-report-ch    tx-report-ch
+     :tx-report-queue tx-report-queue
+     :mult            mult
+     :queues          queues}))
 
 (s/fdef start!
         :args (s/cat :conn p/conn?
-                     :mult any?
+                     :chan p/chan?
                      :deps deps/deps?))
 
 
 (defn stop!
-  "Shut down all `queues`."
-  [mult queues]
+  "Clean up all reactor-related resources."
+  [{:keys [conn tx-report-ch mult queues] :as reactor}]
+  (a/close! tx-report-ch)
+  (d/remove-tx-report-queue conn)
   (doseq [[t q] queues]
     (timbre/info ::stop {:topic t})
     (stop-queue! mult q)))
