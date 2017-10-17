@@ -133,10 +133,9 @@
         customer (<!!? (rcu/fetch (->stripe deps) cus-id))]
     (assert (#{"card"} (rcu/default-source-type customer))
             "Customer's default source must be a credit card before a subscription can be created.")
-    [(event/job ::create-plan {:params       {:order-id   (td/id order)
-                                              :account-id (td/id initiator)}
-                               :triggered-by event})
-     (order/is-processing order)]))
+    (event/job ::create-plan {:params       {:order-id   (td/id order)
+                                             :account-id (td/id initiator)}
+                              :triggered-by event})))
 
 
 ;;; Entrypoint
@@ -146,6 +145,5 @@
   (let [order   (d/entity (->db deps) order-id)
         account (d/entity (->db deps) account-id)]
     (assert (some? (order/computed-price order)) "Order cannot be processed without a price!")
-    (assert (or (order/placed? order) (order/fulfilled? order))
-            "Order must have `placed` or `fulfilled` status!")
+    (assert (order/processing? order) "Order must be in `processing` status!")
     (conj (process-order deps event order account) (source/create account-id))))
