@@ -5,6 +5,7 @@
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
             [blueprints.models.service :as service]
+            [blueprints.models.source :as source]
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
@@ -14,7 +15,8 @@
             [ribbon.subscription :as rs]
             [toolbelt.async :refer [<!!?]]
             [toolbelt.datomic :as td]
-            [toolbelt.predicates :as p]))
+            [toolbelt.predicates :as p]
+            [taoensso.timbre :as timbre]))
 
 ;; =============================================================================
 ;; Helpers
@@ -45,11 +47,11 @@
 
 
 (defmulti process-order
-  (fn [deps event order]
+  (fn [deps event order account]
     (-> order order/service service/billed)))
 
 
-(defmethod process-order :default [_ event order]
+(defmethod process-order :default [_ event order _]
   (let [account (order/account order)]
     (throw (ex-info "This order has an unknown billing method; cannot place!"
                     {:order   (td/id order)
@@ -72,7 +74,7 @@
 
 
 (defmethod process-order :service.billed/once
-  [deps event order]
+  [deps event order _]
   (let [account (order/account order)
         price   (* (order/computed-price order) (or (order/quantity order) 1))
         ch-id   (issue-charge! deps account order price)
@@ -88,7 +90,7 @@
 
 
 (defmethod dispatch/job ::create-subscription
-  [deps event {:keys [order-id plan-id]}]
+  [deps event {:keys [order-id plan-id account-id]}]
   (let [order   (d/entity (->db deps) order-id)
         account (order/account order)
         cus-id  (customer/id (customer/by-account (->db deps) account))
@@ -97,7 +99,8 @@
     [{:db/id          order-id
       :stripe/plan-id plan-id
       :stripe/subs-id (:id sub)}
-     (order/is-charged order)]))
+     (order/is-charged order)
+     (source/create account-id)]))
 
 
 ;; Uses <service-code>-<price-in-cents> as a template for constructing unique
@@ -114,35 +117,35 @@
       existing)))
 
 
-(defmethod dispatch/job ::create-plan [deps event {:keys [order-id]}]
+(defmethod dispatch/job ::create-plan [deps event {:keys [order-id account-id]}]
   (let [order   (d/entity (->db deps) order-id)
         account (order/account order)
         plan    (fetch-or-create-plan deps account order)]
-    (event/job ::create-subscription {:params       {:order-id order-id
-                                                     :plan-id  (:id plan)}
+    (event/job ::create-subscription {:params       {:order-id   order-id
+                                                     :plan-id    (:id plan)
+                                                     :account-id account-id}
                                       :triggered-by event})))
 
 
-(defmethod process-order :service.billed/monthly [deps event order]
+(defmethod process-order :service.billed/monthly [deps event order initiator]
   (let [account  (order/account order)
         cus-id   (customer/id (customer/by-account (->db deps) account))
         customer (<!!? (rcu/fetch (->stripe deps) cus-id))]
     (assert (#{"card"} (rcu/default-source-type customer))
             "Customer's default source must be a credit card before a subscription can be created.")
-    [(event/job ::create-plan {:params       {:order-id (td/id order)}
+    [(event/job ::create-plan {:params       {:order-id   (td/id order)
+                                              :account-id (td/id initiator)}
                                :triggered-by event})
      (order/is-processing order)]))
 
 
-;;; Entry
+;;; Entrypoint
 
 
-;; TODO: Order can be in anything but pending, charged, canceled status
-;; TODO: Set `:order/billed` date
-
-
-(defmethod dispatch/job :order/process [deps event {:keys [order-id]}]
-  (let [order (d/entity (->db deps) order-id)]
+(defmethod dispatch/job :order/process [deps event {:keys [order-id account-id]}]
+  (let [order   (d/entity (->db deps) order-id)
+        account (d/entity (->db deps) account-id)]
     (assert (some? (order/computed-price order)) "Order cannot be processed without a price!")
-    (assert (order/placed? order) "Order must have `:order.status/placed` status!")
-    (process-order deps event order)))
+    (assert (or (order/placed? order) (order/fulfilled? order))
+            "Order must have `placed` or `fulfilled` status!")
+    (conj (process-order deps event order account) (source/create account-id))))

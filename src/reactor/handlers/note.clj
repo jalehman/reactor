@@ -2,9 +2,9 @@
   (:require [blueprints.models
              [account :as account]
              [event :as event]
+             [events :as events]
              [note :as note]]
             [datomic.api :as d]
-            [reactor.events :as events]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
