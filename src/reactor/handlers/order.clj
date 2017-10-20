@@ -6,6 +6,7 @@
             [blueprints.models.payment :as payment]
             [blueprints.models.service :as service]
             [blueprints.models.source :as source]
+            [clojure.core.async :refer [<!!]]
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
@@ -83,6 +84,7 @@
                                 :charge-id ch-id)]
     [(order/add-payment order py)
      (order/is-charged order)
+     [:db/add (:db/id order) :order/billed-on (java.util.Date.)]
      py]))
 
 
@@ -99,6 +101,7 @@
     [{:db/id          order-id
       :stripe/plan-id plan-id
       :stripe/subs-id (:id sub)}
+     [:db/add (:db/id order) :order/billed-on (java.util.Date.)]
      (order/is-charged order)
      (source/create account-id)]))
 
@@ -111,7 +114,7 @@
   (let [price     (int (* 100 (order/computed-price order)))
         plan-name (-> order order/service service/code)
         plan-id   (str plan-name "-" price)
-        existing  (<!!? (rp/fetch (->stripe deps) plan-id))]
+        existing  (<!! (rp/fetch (->stripe deps) plan-id))]
     (if (p/throwable? existing)
       (<!!? (rp/create! (->stripe deps) plan-id plan-name price :month))
       existing)))
