@@ -147,6 +147,13 @@
 (defmethod dispatch/job :order/process [deps event {:keys [order-id account-id]}]
   (let [order   (d/entity (->db deps) order-id)
         account (d/entity (->db deps) account-id)]
-    (assert (some? (order/computed-price order)) "Order cannot be processed without a price!")
-    (assert (order/processing? order) "Order must be in `processing` status!")
-    (conj (process-order deps event order account) (source/create account-id))))
+    (try
+      (assert (order/processing? order) "Order must be in `processing` status!")
+      (assert (some? (order/computed-price order)) "Order cannot be processed without a price!")
+      (conj (process-order deps event order account) (source/create account-id))
+      (catch Throwable t
+        (timbre/error t :order/process {:order-id order-id :account-id account-id})
+        (throw (ex-info "Error encountered while attempting to process order!"
+                        {:order-id   order-id
+                         :account-id account-id
+                         :tx         [(order/is-failed order)]}))))))
