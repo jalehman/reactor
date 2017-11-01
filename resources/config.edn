@@ -11,7 +11,7 @@
        :file     #profile {:dev     "logs/server.log"
                            :default "/var/log/reactor/server.log"}}
 
- :nrepl {:port #or [#env NREPL_PORT 7891]}
+ :nrepl {:port #or [#env NREPL_PORT 7887]}
 
 
  :hosts {:public #profile {:prod  "https://joinstarcity.com"
