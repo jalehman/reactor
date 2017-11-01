@@ -28,7 +28,7 @@
 
 
 (defn- new-connection [{:keys [uri partition] :as conf}]
-  (timbre/info ::connecting {:uri (string/replace uri #"password.*" "")})
+  (timbre/info :datomic/connecting {:uri (string/replace uri #"password.*" "")})
   (d/create-database uri)
   (let [conn (d/connect uri)]
     (blueprints/conform-db conn partition)
@@ -36,7 +36,7 @@
 
 
 (defn- disconnect [conn]
-  (timbre/info ::disconnecting)
+  (timbre/info :datomic/disconnecting)
   (d/release conn))
 
 
@@ -61,7 +61,7 @@
 
 
 (defn- start-nrepl [port]
-  (timbre/info ::starting {:port port})
+  (timbre/info :nrepl/start {:port port})
   (nrepl/start-server :port port))
 
 
