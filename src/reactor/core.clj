@@ -5,6 +5,7 @@
             [clojure.core.async :as a]
             [clojure.spec :as s]
             [clojure.string :as string]
+            [clojure.tools.cli :as cli]
             [clojure.tools.nrepl.server :as nrepl]
             [datomic.api :as d]
             [drawknife.core :as drawknife]
@@ -104,3 +105,27 @@
                chan (a/chan (a/sliding-buffer (config/tx-report-buffer-size config)))]
            (reactor/start! conn chan conf))
   :stop (reactor/stop! reactor))
+
+
+;; =============================================================================
+;; Main
+;; =============================================================================
+
+
+(def cli-options
+  [["-e" "--environment ENVIRONMENT" "The environment to start the server in."
+    :id :env
+    :default :production
+    :parse-fn keyword
+    :validate [#{:prod :dev :stage} "Must be one of #{prod dev stage"]]])
+
+
+(defn- exit [status msg]
+  (System/exit status))
+
+
+(defn -main [& args]
+  (let [{:keys [options errors]} (cli/parse-opts args cli-options)]
+    (when errors
+      (exit 1 (string/join "\n" errors)))
+    (mount/start-with-args {:env (:env options)})))
