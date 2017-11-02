@@ -70,8 +70,10 @@
 (def green (color "#00d1b2"))
 (def red (color "#f00"))
 (def blue (color "#108ee9"))
+(def yellow (color "#ffdd57"))
 
 ;; Attachment Templates
 (def success (partial attachment green))
 (def failure (partial attachment red))
 (def info (partial attachment blue))
+(def warn (partial attachment yellow))
