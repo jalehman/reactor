@@ -1,48 +1,20 @@
 (ns reactor.core
   (:gen-class)
-  (:require [blueprints.core :as blueprints]
-            [cheshire.core :as json]
-            [clojure.core.async :as a]
-            [clojure.spec :as s]
+  (:require [clojure.core.async :as a]
             [clojure.string :as string]
             [clojure.tools.cli :as cli]
             [clojure.tools.nrepl.server :as nrepl]
-            [datomic.api :as d]
             [drawknife.core :as drawknife]
-            [mock.mock :as mock]
             [mount.core :as mount :refer [defstate]]
             [reactor.config :as config :refer [config]]
-            [reactor.deps :as deps]
+            [reactor.datomic :refer [conn]]
             [reactor.reactor :as reactor]
-            [taoensso.timbre :as timbre]
-            [taoensso.timbre.appenders.3rd-party.rolling :as rolling]
-            [taoensso.timbre.appenders.core :as appenders]))
+            [reactor.scheduler]
+            [taoensso.timbre :as timbre]))
 
 ;; =============================================================================
 ;; State
 ;; =============================================================================
-
-
-;; =============================================================================
-;; Datomic
-
-
-(defn- new-connection [{:keys [uri partition] :as conf}]
-  (timbre/info :datomic/connecting {:uri (string/replace uri #"password.*" "")})
-  (d/create-database uri)
-  (let [conn (d/connect uri)]
-    (blueprints/conform-db conn partition)
-    conn))
-
-
-(defn- disconnect [conn]
-  (timbre/info :datomic/disconnecting)
-  (d/release conn))
-
-
-(defstate conn
-  :start (new-connection (config/datomic config/config))
-  :stop  (disconnect conn))
 
 
 ;; =============================================================================

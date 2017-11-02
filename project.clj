@@ -8,11 +8,12 @@
                  [org.clojure/tools.nrepl "0.2.12"]
                  [org.clojure/tools.cli "0.3.5"]
                  ;; db
-                 [starcity/blueprints "1.14.1" :exclusions [com.datomic/datomic-free]]
+                 [starcity/blueprints "1.15.0-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
                  ;; services
                  [starcity/ribbon "0.7.0"]
                  [starcity/mailer "0.1.0"]
                  ;; util
+                 [im.chit/hara.io.scheduler "2.5.10"]
                  [starcity/drawknife "0.2.0"]
                  [starcity/customs "0.1.0"]
                  [clj-time "0.13.0"]
