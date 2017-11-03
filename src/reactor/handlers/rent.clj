@@ -112,40 +112,6 @@
 
 
 ;; =============================================================================
-;; ACH Rent Payment Made
-;; =============================================================================
-
-
-(defmethod dispatch/report :rent-payment.payment/ach
-  [deps event {:keys [account-id payment-id]}]
-  (let [[account payment] (td/entities (->db deps) account-id payment-id)]
-    (slack/send
-     (->slack deps)
-     {:uuid    (event/uuid event)
-      :channel slack/ops}
-     (sm/msg
-      (sm/success
-       (sm/title "View Payment on Stripe"
-                 (format "https://dashboard.stripe.com/payments/%s" (payment/charge-id payment)))
-       (sm/text (format "%s has paid his/her rent via ACH" (account/full-name account)))
-       (sm/fields
-        (sm/field "Amount"
-                  (str "$" (payment/amount payment))
-                  true)
-        (sm/field "Period Start"
-                  (date/short-date (payment/period-start payment))
-                  true)
-        (sm/field "Period End"
-                  (date/short-date (payment/period-end payment))
-                  true)))))))
-
-
-(defmethod dispatch/job :rent-payment.payment/ach [deps event params]
-  (event/report (event/key event) {:params       params
-                                   :triggered-by event}))
-
-
-;; =============================================================================
 ;; Alert Unpaid Payments
 ;; =============================================================================
 
