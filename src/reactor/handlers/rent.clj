@@ -41,6 +41,18 @@
      {:uuid (event/uuid event)})))
 
 
+(defn- due-date [start tz]
+  (let [st (c/to-date-time start)]
+    (-> (t/date-time (t/year st)
+                     (t/month st)
+                     5
+                     (t/hour st)
+                     (t/minute st)
+                     (t/second st))
+        c/to-date
+        (date/end-of-day tz))))
+
+
 (defmethod dispatch/job :rent-payment/create
   [deps event {:keys [start end amount member-license-id] :as params}]
   (let [license (d/entity (->db deps) member-license-id)
@@ -48,6 +60,7 @@
         payment (payment/create amount account
                                 :pstart start
                                 :pend end
+                                :due (due-date start (member-license/time-zone license))
                                 :status :payment.status/due
                                 :for :payment.for/rent)]
     [(event/notify :rent-payment/create
