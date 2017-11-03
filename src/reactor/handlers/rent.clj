@@ -233,7 +233,6 @@
 
 (defmethod dispatch/job :rent-payments/alert-unpaid
   [deps event {:keys [payment-ids as-of] :as params}]
-  (assert (within-a-day? as-of) "This job is stale; not processing.")
   (let [payments (apply td/entities (->db deps) payment-ids)]
     (assert (every? (partial rent-payment? (->db deps)) payments)
             "All payments must be rent payments; not processing.")
@@ -244,3 +243,45 @@
           payments)
      (event/report (event/key event) {:params       params
                                       :triggered-by event}))))
+
+
+;; =============================================================================
+;; due date upcoming
+;; =============================================================================
+
+
+;; it may make sense to move this to a `payment` namespace when we're dealing
+;; with multiple kinds of payments.
+
+(defn- payment-due-soon-body [deps payment as-of]
+  (let [tz             (->> payment
+                            payment/account
+                            (member-license/active (->db deps))
+                            member-license/time-zone)
+        due            (date/to-utc-corrected-date (payment/due payment) tz)
+        as-of          (date/to-utc-corrected-date as-of tz)
+        days-until-due (->> due
+                            c/to-date-time
+                            (t/interval (c/to-date-time as-of))
+                            t/in-days
+                            inc)]
+    (mm/msg
+     (mm/greet (-> payment payment/account account/first-name))
+     (mm/p
+      (format "This is a friendly reminder to let you know that your rent payment of $%.2f is <b>due in %s day(s)</b> by %s." (payment/amount payment) days-until-due (date/short-date-time due)))
+     (mm/p
+      (format "Please <a href='%s/login'>log in to your account</a> to pay your rent as soon as possible." (->public-hostname deps)))
+     (mm/sig "Meagan Jensen" "Operations Associate"))))
+
+
+(defmethod dispatch/notify :payment/due [deps event {:keys [payment-id as-of]}]
+  (let [payment (d/entity (->db deps) payment-id)]
+    (assert (= (payment/payment-for2 (->db deps) payment) :payment.for/rent)
+            "Can only work with rent payments; not processing.")
+    (mailer/send
+     (->mailer deps)
+     (account/email (payment/account payment))
+     "Starcity: Your Rent is Due Soon"
+     (payment-due-soon-body deps payment as-of)
+     {:uuid (event/uuid event)
+      :from "Starcity <meagan@joinstarcity.com>"})))

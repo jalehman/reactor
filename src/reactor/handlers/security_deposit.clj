@@ -329,11 +329,54 @@
 
 
 (defmethod dispatch/job :deposits/alert-unpaid
-  [deps event {:keys [deposit-ids as-of] :as params}]
-  (assert (within-a-day? as-of) "This job is stale; not processing.")
+  [deps event {:keys [deposit-ids] :as params}]
   (conj
    (map #(event/notify (event/key event) {:params       {:deposit-id %}
                                           :triggered-by event})
         deposit-ids)
    (event/report (event/key event) {:params       params
                                     :triggered-by event})))
+
+
+;; =============================================================================
+;; due date upcoming
+;; =============================================================================
+
+
+(defn- deposit-due-soon-body [deps deposit as-of]
+  (let [tz             (->> deposit
+                            deposit/account
+                            (member-license/active (->db deps))
+                            member-license/time-zone)
+        due            (date/to-utc-corrected-date (deposit/due deposit) tz)
+        as-of          (date/to-utc-corrected-date as-of tz)
+        days-until-due (->> due
+                            c/to-date-time
+                            (t/interval (c/to-date-time as-of))
+                            t/in-days
+                            inc)]
+    (mm/msg
+     (mm/greet (-> deposit deposit/account account/first-name))
+     (mm/p
+      (format "This is a friendly reminder to let you know that your remaining security deposit payment of $%.2f is <b>due in %s day(s)</b> by %s." (deposit/amount-remaining deposit) days-until-due (date/short-date-time due)))
+     (mm/p
+      (format "Please <a href='%s/login'>log in to your account</a> to pay your balance as soon as possible." (->public-hostname deps)))
+     (mm/sig "Meagan Jensen" "Operations Associate"))))
+
+
+(defmethod dispatch/notify :deposit/due [deps event {:keys [deposit-id as-of]}]
+  (let [deposit (d/entity (->db deps) deposit-id)]
+    (mailer/send
+     (->mailer deps)
+     (account/email (deposit/account deposit))
+     "Starcity: Your Security Deposit is Due Soon"
+     (deposit-due-soon-body deps deposit as-of)
+     {:uuid (event/uuid event)
+      :from "Starcity <meagan@joinstarcity.com>"})))
+
+
+(comment
+
+  (t/in-days (t/interval (t/now) (t/plus (t/now) (t/days 5))))
+
+  )
