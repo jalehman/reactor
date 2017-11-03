@@ -11,7 +11,9 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]))
+            [toolbelt.datomic :as td]
+            [clj-time.coerce :as c]
+            [clj-time.core :as t]))
 
 ;; =============================================================================
 ;; Create Payment
@@ -141,3 +143,145 @@
 (defmethod dispatch/job :rent-payment.payment/ach [deps event params]
   (event/report (event/key event) {:params       params
                                    :triggered-by event}))
+
+
+;; =============================================================================
+;; Alert Unpaid Payments
+;; =============================================================================
+
+
+(defn- payment-period [payment]
+  (str (date/short-date (payment/period-start payment))
+       "-"
+       (date/short-date (payment/period-end payment))))
+
+
+;; =====================================
+;; Internal Slack notification
+
+
+(defn- fmt-payment [i payment]
+  (let [account      (payment/account payment)
+        days-overdue (t/in-days (t/interval
+                                 (c/to-date-time (payment/due payment))
+                                 (t/now)))]
+    (format "%s. %s's (_%s_) rent for `%s` is overdue by *%s days* (_due %s_)."
+            (inc i)
+            (account/short-name account)
+            (account/email account)
+            (payment-period payment)
+            days-overdue
+            (-> payment payment/due date/short-date-time))))
+
+
+(defmethod dispatch/report :rent-payments/alert-unpaid
+  [deps event {:keys [payment-ids as-of]}]
+  (let [payments (apply td/entities (->db deps) payment-ids)]
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel slack/ops}
+     (sm/msg
+      (sm/warn
+       (sm/title "The following rent payments are overdue:")
+       (sm/pretext "_I've gone ahead and notified each member of his/her late payment; this is just FYI._")
+       (sm/text (->> payments
+                     (sort-by payment/due)
+                     (map-indexed fmt-payment)
+                     (interpose "\n")
+                     (apply str)))
+       (sm/fields
+        (sm/field "Queried At" (date/short-date-time as-of))))))))
+
+
+;; =====================================
+;; Member email
+
+
+(defn- rent-overdue-body [payment hostname]
+  (mm/msg
+   (mm/greet (-> payment payment/account account/first-name))
+   (mm/p
+    (format "I hope all is well. I wanted to check in because your <b>rent for %s is now overdue</b> (it was <b>due by %s</b>). Please <a href='%s/login'>log in to your account</a> to pay your balance at your earliest opportunity."
+            (payment-period payment)
+            (date/short-date (payment/due payment))
+            hostname))
+   (mm/p "While you're there, I'd highly encourage you to enroll in <b>Autopay</b> so you don't have to worry about missing due dates and having late fees assessed in the future.")
+   (mm/p "If you're having trouble remitting payment, please let us know so we can figure out how best to accommodate you.")
+   (mm/sig "Meagan Jensen" "Operations Associate")))
+
+
+(defmethod dispatch/notify :rent-payments/alert-unpaid
+  [deps event {:keys [payment-id]}]
+  (let [payment (d/entity (->db deps) payment-id)]
+    (mailer/send
+     (->mailer deps)
+     (account/email (payment/account payment))
+     "Starcity: Your Rent is Overdue"
+     (rent-overdue-body payment (->public-hostname deps))
+     {:uuid (event/uuid event)
+      :from "Starcity <meagan@joinstarcity.com>"})))
+
+
+;; =====================================
+;; Dispatch report/notify events
+
+
+(defn- rent-payment? [db payment]
+  (= (payment/payment-for2 db payment) :payment.for/rent))
+
+
+(defmethod dispatch/job :rent-payments/alert-unpaid
+  [deps event {:keys [payment-ids as-of] :as params}]
+  (let [payments (apply td/entities (->db deps) payment-ids)]
+    (assert (every? (partial rent-payment? (->db deps)) payments)
+            "All payments must be rent payments; not processing.")
+    (conj
+     ;; notify each member
+     (map #(event/notify (event/key event) {:params       {:payment-id (td/id %)}
+                                            :triggered-by event})
+          payments)
+     (event/report (event/key event) {:params       params
+                                      :triggered-by event}))))
+
+
+;; =============================================================================
+;; due date upcoming
+;; =============================================================================
+
+
+;; it may make sense to move this to a `payment` namespace when we're dealing
+;; with multiple kinds of payments.
+
+(defn- payment-due-soon-body [deps payment as-of]
+  (let [tz             (->> payment
+                            payment/account
+                            (member-license/active (->db deps))
+                            member-license/time-zone)
+        due            (date/to-utc-corrected-date (payment/due payment) tz)
+        as-of          (date/to-utc-corrected-date as-of tz)
+        days-until-due (->> due
+                            c/to-date-time
+                            (t/interval (c/to-date-time as-of))
+                            t/in-days
+                            inc)]
+    (mm/msg
+     (mm/greet (-> payment payment/account account/first-name))
+     (mm/p
+      (format "This is a friendly reminder to let you know that your rent payment of $%.2f is <b>due in %s day(s)</b> by %s." (payment/amount payment) days-until-due (date/short-date-time due)))
+     (mm/p
+      (format "Please <a href='%s/login'>log in to your account</a> to pay your rent as soon as possible." (->public-hostname deps)))
+     (mm/sig "Meagan Jensen" "Operations Associate"))))
+
+
+(defmethod dispatch/notify :payment/due [deps event {:keys [payment-id as-of]}]
+  (let [payment (d/entity (->db deps) payment-id)]
+    (assert (= (payment/payment-for2 (->db deps) payment) :payment.for/rent)
+            "Can only work with rent payments; not processing.")
+    (mailer/send
+     (->mailer deps)
+     (account/email (payment/account payment))
+     "Starcity: Your Rent is Due Soon"
+     (payment-due-soon-body deps payment as-of)
+     {:uuid (event/uuid event)
+      :from "Starcity <meagan@joinstarcity.com>"})))

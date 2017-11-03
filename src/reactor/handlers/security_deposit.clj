@@ -17,7 +17,11 @@
             [toolbelt.async :refer [<!!?]]
             [mailer.core :as mailer]
             [mailer.message :as mm]
-            [clojure.string :as string]))
+            [clojure.string :as string]
+            [toolbelt.datomic :as td]
+            [clj-time.core :as t]
+            [clj-time.coerce :as c]
+            [toolbelt.date :as date]))
 
 
 ;; =============================================================================
@@ -249,5 +253,130 @@
     (refund-params deposit amount))
 
 
+
+  )
+
+
+;; =============================================================================
+;; Payment Overdue
+;; =============================================================================
+
+
+;; =====================================
+;; Internal Slack Notification
+
+
+(defn- fmt-deposit [i deposit]
+  (let [account      (deposit/account deposit)
+        days-overdue (t/in-days (t/interval
+                                 (c/to-date-time (deposit/due deposit))
+                                 (t/now)))]
+    (format "%s. %s's (_%s_) security deposit is overdue by *%s days* (_due %s_)."
+            (inc i)
+            (account/short-name account)
+            (account/email account)
+            days-overdue
+            (-> deposit deposit/due date/short-date-time))))
+
+
+(defmethod dispatch/report :deposits/alert-unpaid
+  [deps event {:keys [deposit-ids as-of]}]
+  (let [deposits (apply td/entities (->db deps) deposit-ids)]
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel slack/ops}
+     (sm/msg
+      (sm/warn
+       (sm/title "The following security deposits are overdue:")
+       (sm/pretext "_I've gone ahead and notified each member of his/her late payment; this is just FYI._")
+       (sm/text (->> deposits
+                     (sort-by deposit/due)
+                     (map-indexed fmt-deposit)
+                     (interpose "\n")
+                     (apply str)))
+       (sm/fields
+        (sm/field "Queried At" (date/short-date-time as-of))))))))
+
+
+;; =====================================
+;; Email Notifications
+
+
+(defn- deposit-overdue-body [deposit hostname]
+  (mm/msg
+   (mm/greet (-> deposit deposit/account account/first-name))
+   (mm/p
+    (format "I hope you're settling in to the Starcity community. I'm reaching out because the remainder of your security deposit is now overdue. Please <a href='%s/login'>log in to your account</a> to pay your balance as soon as possible." hostname))
+   (mm/p "If you're having trouble remitting payment, please let me know so I can figure out how best to accommodate you.")
+   (mm/sig "Meagan Jensen" "Operations Associate")))
+
+
+(defmethod dispatch/notify :deposits/alert-unpaid
+  [deps event {:keys [deposit-id]}]
+  (let [deposit (d/entity (->db deps) deposit-id)]
+    (mailer/send
+     (->mailer deps)
+     (account/email (deposit/account deposit))
+     "Starcity: Your Security Deposit is Overdue"
+     (deposit-overdue-body deposit (->public-hostname deps))
+     {:uuid (event/uuid event)
+      :from "Starcity <meagan@joinstarcity.com>"})))
+
+
+;; =====================================
+;; Dispatch report/alerts
+
+
+(defmethod dispatch/job :deposits/alert-unpaid
+  [deps event {:keys [deposit-ids] :as params}]
+  (conj
+   (map #(event/notify (event/key event) {:params       {:deposit-id %}
+                                          :triggered-by event})
+        deposit-ids)
+   (event/report (event/key event) {:params       params
+                                    :triggered-by event})))
+
+
+;; =============================================================================
+;; due date upcoming
+;; =============================================================================
+
+
+(defn- deposit-due-soon-body [deps deposit as-of]
+  (let [tz             (->> deposit
+                            deposit/account
+                            (member-license/active (->db deps))
+                            member-license/time-zone)
+        due            (date/to-utc-corrected-date (deposit/due deposit) tz)
+        as-of          (date/to-utc-corrected-date as-of tz)
+        days-until-due (->> due
+                            c/to-date-time
+                            (t/interval (c/to-date-time as-of))
+                            t/in-days
+                            inc)]
+    (mm/msg
+     (mm/greet (-> deposit deposit/account account/first-name))
+     (mm/p
+      (format "This is a friendly reminder to let you know that your remaining security deposit payment of $%.2f is <b>due in %s day(s)</b> by %s." (deposit/amount-remaining deposit) days-until-due (date/short-date-time due)))
+     (mm/p
+      (format "Please <a href='%s/login'>log in to your account</a> to pay your balance as soon as possible." (->public-hostname deps)))
+     (mm/sig "Meagan Jensen" "Operations Associate"))))
+
+
+(defmethod dispatch/notify :deposit/due [deps event {:keys [deposit-id as-of]}]
+  (let [deposit (d/entity (->db deps) deposit-id)]
+    (mailer/send
+     (->mailer deps)
+     (account/email (deposit/account deposit))
+     "Starcity: Your Security Deposit is Due Soon"
+     (deposit-due-soon-body deps deposit as-of)
+     {:uuid (event/uuid event)
+      :from "Starcity <meagan@joinstarcity.com>"})))
+
+
+(comment
+
+  (t/in-days (t/interval (t/now) (t/plus (t/now) (t/days 5))))
 
   )

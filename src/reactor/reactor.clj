@@ -11,6 +11,7 @@
             [reactor.handlers.note]
             [reactor.handlers.order]
             [reactor.handlers.rent]
+            [reactor.handlers.scheduler]
             [reactor.handlers.security-deposit]
             [reactor.handlers.session]
             [reactor.handlers.stripe]
