@@ -126,8 +126,13 @@
 
         (testing "tranasction validity"
           (is (sequential? tx))
-          (is (= 1 (count tx))))
+          (is (= 2 (count tx))))
 
         (testing "the payment is marked as paid"
           (let [py (tb/find-by :payment/status tx)]
-            (is (payment/paid? py))))))))
+            (is (payment/paid? py))))
+
+        (testing "the payment will ahve a `:payment/paid-on` date added"
+          (let [[_ _ attr v] (tb/find-by vector? tx)]
+            (is (= attr :payment/paid-on))
+            (is (inst? v))))))))
