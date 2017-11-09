@@ -35,7 +35,7 @@
 
 
 (defmethod process-successful-charge :payment.for/order [deps payment event]
-  [])
+  [[:db/add (:db/id payment) :payment/paid-on (java.util.Date.)]])
 
 
 (defn- invoice-charge? [stripe-event]
