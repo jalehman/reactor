@@ -13,7 +13,8 @@
             [toolbelt.date :as date]
             [toolbelt.datomic :as td]
             [clj-time.coerce :as c]
-            [clj-time.core :as t]))
+            [clj-time.core :as t]
+            [taoensso.timbre :as timbre]))
 
 ;; =============================================================================
 ;; Create Payment
@@ -129,28 +130,29 @@
 ;; =============================================================================
 
 
-(defn- payment-period [payment]
-  (str (date/short-date (payment/period-start payment))
+(defn- payment-period [payment tz]
+  (str (date/short-date (date/to-utc-corrected-date (payment/period-start payment) tz))
        "-"
-       (date/short-date (payment/period-end payment))))
+       (date/short-date (date/to-utc-corrected-date (payment/period-end payment) tz))))
 
 
 ;; =====================================
 ;; Internal Slack notification
 
 
-(defn- fmt-payment [i payment]
+(defn- fmt-payment [db i payment]
   (let [account      (payment/account payment)
+        tz           (member-license/time-zone (member-license/by-account db account))
         days-overdue (t/in-days (t/interval
-                                 (c/to-date-time (payment/due payment))
+                                 (date/to-utc-corrected-date-time (c/to-date-time (payment/due payment)) tz)
                                  (t/now)))]
     (format "%s. %s's (_%s_) rent for `%s` is overdue by *%s days* (_due %s_)."
             (inc i)
             (account/short-name account)
             (account/email account)
-            (payment-period payment)
+            (payment-period payment tz)
             days-overdue
-            (-> payment payment/due date/short-date-time))))
+            (-> payment payment/due (date/to-utc-corrected-date tz) date/short-date-time))))
 
 
 (defmethod dispatch/report :rent-payments/alert-unpaid
@@ -166,28 +168,28 @@
        (sm/pretext "_I've gone ahead and notified each member of his/her late payment; this is just FYI._")
        (sm/text (->> payments
                      (sort-by payment/due)
-                     (map-indexed fmt-payment)
+                     (map-indexed (partial fmt-payment (->db deps)))
                      (interpose "\n")
-                     (apply str)))
-       (sm/fields
-        (sm/field "Queried At" (date/short-date-time as-of))))))))
+                     (apply str))))))))
 
 
 ;; =====================================
 ;; Member email
 
 
-(defn- rent-overdue-body [payment hostname]
-  (mm/msg
-   (mm/greet (-> payment payment/account account/first-name))
-   (mm/p
-    (format "I hope all is well. I wanted to check in because your <b>rent for %s is now overdue</b> (it was <b>due by %s</b>). Please <a href='%s/login'>log in to your account</a> to pay your balance at your earliest opportunity."
-            (payment-period payment)
-            (date/short-date (payment/due payment))
-            hostname))
-   (mm/p "While you're there, I'd highly encourage you to enroll in <b>Autopay</b> so you don't have to worry about missing due dates and having late fees assessed in the future.")
-   (mm/p "If you're having trouble remitting payment, please let us know so we can figure out how best to accommodate you.")
-   (mm/sig "Meagan Jensen" "Operations Associate")))
+(defn- rent-overdue-body [db payment hostname]
+  (let [account (payment/account payment)
+        tz      (member-license/time-zone (member-license/by-account db account))]
+    (mm/msg
+     (mm/greet (-> payment payment/account account/first-name))
+     (mm/p
+      (format "I hope all is well. I wanted to check in because your <b>rent for %s is now overdue</b> (it was <b>due by %s</b>). Please <a href='%s/login'>log in to your account</a> to pay your balance at your earliest opportunity."
+              (payment-period payment tz)
+              (date/short-date-time (date/to-utc-corrected-date (payment/due payment) tz))
+              hostname))
+     (mm/p "While you're there, I'd highly encourage you to enroll in <b>Autopay</b> so you don't have to worry about missing due dates and having late fees assessed in the future.")
+     (mm/p "If you're having trouble remitting payment, please let us know so we can figure out how best to accommodate you.")
+     (mm/sig "Meagan Jensen" "Operations Associate"))))
 
 
 (defmethod dispatch/notify :rent-payments/alert-unpaid
@@ -197,7 +199,7 @@
      (->mailer deps)
      (account/email (payment/account payment))
      "Starcity: Your Rent is Overdue"
-     (rent-overdue-body payment (->public-hostname deps))
+     (rent-overdue-body (->db deps) payment (->public-hostname deps))
      {:uuid (event/uuid event)
       :from "Starcity <meagan@joinstarcity.com>"})))
 
