@@ -266,17 +266,19 @@
 ;; Internal Slack Notification
 
 
-(defn- fmt-deposit [i deposit]
+(defn- fmt-deposit [db i deposit]
   (let [account      (deposit/account deposit)
+        tz           (member-license/time-zone (member-license/by-account db account))
         days-overdue (t/in-days (t/interval
-                                 (c/to-date-time (deposit/due deposit))
+                                 (date/to-utc-corrected-date-time
+                                  (c/to-date-time (deposit/due deposit)) tz)
                                  (t/now)))]
     (format "%s. %s's (_%s_) security deposit is overdue by *%s days* (_due %s_)."
             (inc i)
             (account/short-name account)
             (account/email account)
             days-overdue
-            (-> deposit deposit/due date/short-date-time))))
+            (-> deposit deposit/due (date/to-utc-corrected-date tz) date/short-date-time))))
 
 
 (defmethod dispatch/report :deposits/alert-unpaid
@@ -292,24 +294,26 @@
        (sm/pretext "_I've gone ahead and notified each member of his/her late payment; this is just FYI._")
        (sm/text (->> deposits
                      (sort-by deposit/due)
-                     (map-indexed fmt-deposit)
+                     (map-indexed (partial fmt-deposit (->db deps)))
                      (interpose "\n")
-                     (apply str)))
-       (sm/fields
-        (sm/field "Queried At" (date/short-date-time as-of))))))))
+                     (apply str))))))))
 
 
 ;; =====================================
 ;; Email Notifications
 
 
-(defn- deposit-overdue-body [deposit hostname]
-  (mm/msg
-   (mm/greet (-> deposit deposit/account account/first-name))
-   (mm/p
-    (format "I hope you're settling in to the Starcity community. I'm reaching out because the remainder of your security deposit is now overdue. Please <a href='%s/login'>log in to your account</a> to pay your balance as soon as possible." hostname))
-   (mm/p "If you're having trouble remitting payment, please let me know so I can figure out how best to accommodate you.")
-   (mm/sig "Meagan Jensen" "Operations Associate")))
+(defn- deposit-overdue-body [db deposit hostname]
+  (let [account (deposit/account deposit)
+        tz      (member-license/time-zone (member-license/by-account db account))]
+    (mm/msg
+     (mm/greet (-> deposit deposit/account account/first-name))
+     (mm/p
+      (format "I hope you're settling in to the Starcity community. I'm reaching out because the remainder of your security deposit is now overdue (it was <b>due by %s</b>). Please <a href='%s/login'>log in to your account</a> to pay your balance as soon as possible."
+              (date/short-date-time (date/to-utc-corrected-date (deposit/due deposit) tz))
+              hostname))
+     (mm/p "If you're having trouble remitting payment, please let me know so I can figure out how best to accommodate you.")
+     (mm/sig "Meagan Jensen" "Operations Associate"))))
 
 
 (defmethod dispatch/notify :deposits/alert-unpaid
@@ -319,7 +323,7 @@
      (->mailer deps)
      (account/email (deposit/account deposit))
      "Starcity: Your Security Deposit is Overdue"
-     (deposit-overdue-body deposit (->public-hostname deps))
+     (deposit-overdue-body (->db deps) deposit (->public-hostname deps))
      {:uuid (event/uuid event)
       :from "Starcity <meagan@joinstarcity.com>"})))
 

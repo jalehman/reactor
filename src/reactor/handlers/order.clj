@@ -2,12 +2,15 @@
   (:require [blueprints.models.account :as account]
             [blueprints.models.customer :as customer]
             [blueprints.models.event :as event]
+            [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
             [blueprints.models.service :as service]
             [blueprints.models.source :as source]
             [clojure.core.async :refer [<!!]]
             [datomic.api :as d]
+            [mailer.core :as mailer]
+            [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [ribbon.charge :as rc]
@@ -17,7 +20,8 @@
             [toolbelt.async :refer [<!!?]]
             [toolbelt.datomic :as td]
             [toolbelt.predicates :as p]
-            [taoensso.timbre :as timbre]))
+            [taoensso.timbre :as timbre]
+            [toolbelt.date :as date]))
 
 ;; =============================================================================
 ;; Helpers
@@ -43,7 +47,7 @@
 
 
 ;; =============================================================================
-;; Place Order
+;; Process Order
 ;; =============================================================================
 
 
@@ -157,3 +161,140 @@
                         {:order-id   order-id
                          :account-id account-id
                          :tx         [(order/is-failed order)]}))))))
+
+
+;; =============================================================================
+;; Other Lifecycle
+;; =============================================================================
+
+
+(defn- order-name [order]
+  (-> order order/service service/name))
+
+
+(defn- time-zone [db account]
+  (member-license/time-zone (member-license/by-account db account)))
+
+
+;; =====================================
+;; Placed
+
+
+(defmethod dispatch/notify :order/placed
+  [deps event {:keys [order-id account-id]}]
+  (let [[order placed-by] (td/entities (->db deps) order-id account-id)
+        orderer           (order/account order)
+        tz                (time-zone (->db deps) orderer)]
+    (mailer/send
+     (->mailer deps)
+     (account/email orderer)
+     (format "Starcity: Your order for %s has been placed" (order-name order))
+     (mm/msg
+      (mm/greet (account/first-name orderer))
+      (mm/p
+       (format "Your order for %s has been placed by %s, which means that it can no longer be canceled. If this comes as a surprise, please reach out to %s at %s directly."
+               (order-name order)
+               (account/short-name placed-by)
+               (account/first-name placed-by)
+               (account/email placed-by)))
+      (when-let [date (order/projected-fulfillment order)]
+        (mm/p (format "Your order is expected to be fulfilled at <b>%s</b>."
+                      (-> date
+                          (date/from-tz-date tz)
+                          (date/short-date-time)))))
+      (mm/sig))
+     {:uuid (event/uuid event)})))
+
+
+(defmethod dispatch/job :order/placed
+  [deps event {:keys [account-id notify] :as params}]
+  (when notify
+    [(event/notify (event/key event) {:params       params
+                                      :triggered-by event})
+     (source/create account-id)]))
+
+
+;; =====================================
+;; Fulfulled
+
+
+(defmethod dispatch/notify :order/fulfilled
+  [deps event {:keys [order-id account-id]}]
+  (let [[order placed-by] (td/entities (->db deps) order-id account-id)
+        orderer           (order/account order)
+        tz                (time-zone (->db deps) orderer)]
+    (mailer/send
+     (->mailer deps)
+     (account/email orderer)
+     (format "Starcity: Your order for %s has been fulfilled" (order-name order))
+     (mm/msg
+      (mm/greet (account/first-name orderer))
+      (mm/p
+       (format "Your order for %s has been fulfilled by %s on <b>%s</b>. If this comes as a surprise, please reach out to %s at %s directly."
+               (order-name order)
+               (account/short-name placed-by)
+               (-> (order/fulfilled-on order)
+                   (date/from-tz-date tz)
+                   date/short-date-time)
+               (account/first-name placed-by)
+               (account/email placed-by)))
+      (mm/sig))
+     {:uuid (event/uuid event)})))
+
+
+(defmethod dispatch/job :order/fulfilled
+  [deps event {:keys [account-id notify] :as params}]
+  (when notify
+    [(event/notify (event/key event) {:params       params
+                                      :triggered-by event})
+     (source/create account-id)]))
+
+
+;; =====================================
+;; Canceled
+
+
+(defmethod dispatch/notify :order/canceled
+  [deps event {:keys [order-id account-id]}]
+  (let [[order placed-by] (td/entities (->db deps) order-id account-id)
+        orderer           (order/account order)]
+    (mailer/send
+     (->mailer deps)
+     (account/email orderer)
+     (format "Starcity: Your order for %s has been canceled" (order-name order))
+     (mm/msg
+      (mm/greet (account/first-name orderer))
+      (mm/p
+       (format "Your order for %s has been canceled by %s. If this comes as a surprise, please reach out to %s at %s directly."
+               (order-name order)
+               (account/short-name placed-by)
+               (account/first-name placed-by)
+               (account/email placed-by)))
+      (mm/sig))
+     {:uuid (event/uuid event)})))
+
+
+(defmethod dispatch/job :order/canceled
+  [deps event {:keys [account-id notify] :as params}]
+  (when notify
+    [(event/notify (event/key event) {:params       params
+                                      :triggered-by event})
+     (source/create account-id)]))
+
+
+(comment
+
+  ;; (def conn reactor.datomic/conn)
+
+  (def conn odin.datomic/conn)
+
+  @(d/transact conn [(order/create [:account/email "member@test.com"] (service/by-code (d/db conn) "box-fan"))])
+
+  (let [order (order/by-account (d/db conn) [:account/email "member@test.com"] (service/by-code (d/db conn) "box-fan"))]
+    @(d/transact conn [#_[:db/add (:db/id order) :order/fulfilled-on (java.util.Date.)]
+                       #_[:db/add (:db/id order) :order/projected-fulfillment (java.util.Date.)]
+                       #_(blueprints.models.events/order-fulfilled [:account/email "admin@test.com"] order true)
+                       (blueprints.models.events/order-placed [:account/email "admin@test.com"] order true)
+                       #_(blueprints.models.events/order-canceled [:account/email "admin@test.com"] order true)]))
+
+  )

@@ -29,6 +29,7 @@
                       (distinct-by (comp :account/email #(tb/find-by :account/email %))))]
     (apply concat
            (accounts/member [:unit/name "52gilbert-1"] (:db/id license) :email "member@test.com")
+           (accounts/admin :first-name "Josh" :last-name "Lehman" :email "admin@test.com")
            members)))
 
 

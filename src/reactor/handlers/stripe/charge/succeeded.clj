@@ -24,18 +24,16 @@
                {:uuid (event/uuid event)}))
 
 
-;; invoice handlers take care of this
 (defmethod process-successful-charge :payment.for/deposit [deps payment event]
   [])
 
 
 (defmethod process-successful-charge :payment.for/rent [deps payment event]
-  ;; invoice handlers take care of this
   [])
 
 
 (defmethod process-successful-charge :payment.for/order [deps payment event]
-  [])
+  [[:db/add (:db/id payment) :payment/paid-on (java.util.Date.)]])
 
 
 (defn- invoice-charge? [stripe-event]
