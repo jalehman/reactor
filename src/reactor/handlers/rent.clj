@@ -201,7 +201,7 @@
      "Starcity: Your Rent is Overdue"
      (rent-overdue-body (->db deps) payment (->public-hostname deps))
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@joinstarcity.com>"})))
+      :from "Starcity <meagan@starcity.com>"})))
 
 
 ;; =====================================
@@ -259,4 +259,4 @@
      "Starcity: Your Rent is Due Soon"
      (payment-due-soon-body deps payment as-of)
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@joinstarcity.com>"})))
+      :from "Starcity <meagan@starcity.com>"})))
