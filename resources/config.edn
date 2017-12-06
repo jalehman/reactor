@@ -14,16 +14,16 @@
  :nrepl {:port #or [#env NREPL_PORT 7887]}
 
 
- :hosts {:public #profile {:prod  "https://joinstarcity.com"
-                           :stage "https://staging.joinstarcity.com"
+ :hosts {:public #profile {:prod  "https://starcity.com"
+                           :stage "https://staging.starcity.com"
                            :dev   "http://localhost:8080"}
 
-         :apply #profile {:prod  "https://apply.joinstarcity.com"
-                          :stage "https://apply.staging.joinstarcity.com"
+         :apply #profile {:prod  "https://apply.starcity.com"
+                          :stage "https://apply.staging.starcity.com"
                           :dev   "http://localhost:8081"}}
 
- :mailgun #profile {:prod    {:domain  "mg.joinstarcity.com"
-                              :sender  "Starcity <meg@joinstarcity.com>"
+ :mailgun #profile {:prod    {:domain  "mg.starcity.com"
+                              :sender  "Starcity <meg@starcity.com>"
                               :api-key ^:ref [:secrets :mailgun :api-key]}
                     :default {:domain  "sandboxeec004e4d33845edaef9b962843713a7.mailgun.org"
                               :sender  "Mailgun Sandbox <postmaster@sandboxeec004e4d33845edaef9b962843713a7.mailgun.org>"

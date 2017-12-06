@@ -62,7 +62,7 @@
   {:mailer          {:api-key (config/mailgun-api-key config)
                      :domain  (config/mailgun-domain config)
                      :sender  (config/mailgun-sender config)
-                     :send-to "josh@joinstarcity.com"}
+                     :send-to "josh@starcity.com"}
    :slack           {:webhook-url (config/slack-webhook-url config)
                      :username    (config/slack-username config)
                      :channel     "#debug"}
