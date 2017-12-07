@@ -185,7 +185,7 @@
      (mm/p
       (format "I hope all is well. I wanted to check in because your <b>rent for %s is now overdue and past the grace period</b> (the grace period ended on %s). Please <a href='%s/login'>log in to your account</a> to pay your balance at your earliest opportunity."
               (payment-period payment tz)
-              (date/short-date-time (date/from-tz-date-time (payment/due payment) tz))
+              (date/short-date-time (date/from-tz-date (payment/due payment) tz))
               hostname))
      (mm/p "While you're there, I'd highly encourage you to enroll in <b>Autopay</b> so you don't have to worry about missing due dates and having late fees assessed in the future.")
      (mm/p "If you're having trouble remitting payment, please let us know so we can figure out how best to accommodate you.")
