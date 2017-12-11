@@ -26,7 +26,7 @@
      :transfer             "tr_1AYJMHIvRccmW9nOkFMaqd5Z",
      :captured             true,
      :dispute              nil,
-     :receipt_email        "josh@joinstarcity.com",
+     :receipt_email        "josh@starcity.com",
      :on_behalf_of         "acct_191838JDow24Tc1a",
      :created              1498330308,
      :outcome
