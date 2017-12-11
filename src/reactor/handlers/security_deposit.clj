@@ -325,7 +325,7 @@
      "Starcity: Your Security Deposit is Overdue"
      (deposit-overdue-body (->db deps) deposit (->public-hostname deps))
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@joinstarcity.com>"})))
+      :from "Starcity <meagan@starcity.com>"})))
 
 
 ;; =====================================
@@ -376,7 +376,7 @@
      "Starcity: Your Security Deposit is Due Soon"
      (deposit-due-soon-body deps deposit as-of)
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@joinstarcity.com>"})))
+      :from "Starcity <meagan@starcity.com>"})))
 
 
 (comment
