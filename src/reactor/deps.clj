@@ -104,15 +104,23 @@
 
 
 (defn deps
-  "Construct the dependencies map for Reactor to function."
-  [config]
-  (s/assert ::config config)
-  {:community-safety (community-safety (:community-safety config))
-   :mailer           (mailer (:mailer config))
-   :slack            (slack (:slack config))
-   :weebly           (weebly (:weebly config))
-   :stripe           (stripe (:stripe config))
-   :public-hostname  (:public-hostname config)})
+  "Construct the dependencies map for `reactor` to function. When the no-arg
+  variant is used mock dependencies will be used."
+  ([]
+   {:community-safety (mock/community-safety)
+    :mailer           (mock/mailer)
+    :slack            (mock/slack)
+    :weebly           (mock/weebly)
+    :stripe           (mock/stripe)
+    :public-hostname  "http://localhost:8080"})
+  ([config]
+   (s/assert ::config config)
+   {:community-safety (community-safety (:community-safety config))
+    :mailer           (mailer (:mailer config))
+    :slack            (slack (:slack config))
+    :weebly           (weebly (:weebly config))
+    :stripe           (stripe (:stripe config))
+    :public-hostname  (:public-hostname config)}))
 
 (s/fdef deps
         :args (s/cat :config ::config)
