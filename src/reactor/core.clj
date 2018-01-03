@@ -10,6 +10,7 @@
             [reactor.datomic :refer [conn]]
             [reactor.reactor :as reactor]
             [reactor.scheduler]
+            [reactor.sync]
             [taoensso.timbre :as timbre]))
 
 ;; =============================================================================
