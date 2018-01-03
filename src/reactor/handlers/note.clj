@@ -9,7 +9,9 @@
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
-            [toolbelt.core :as tb]))
+            [toolbelt.core :as tb]
+            [blueprints.models.member-license :as member-license]
+            [blueprints.models.property :as property]))
 
 
 ;; =============================================================================
@@ -26,23 +28,37 @@
 ;; =============================================================================
 
 
+(def ^:private property-channel
+  {"52gilbert"   "#52-gilbert"
+   "2072mission" "#2072-mission"
+   "6nottingham" "#6-nottingham"})
+
+
+(defn- notification-channel [db note]
+  (let [code (when-let [a (note/account note)]
+               (-> (member-license/active db a)
+                   member-license/property
+                   property/internal-name))]
+    (get property-channel code slack/crm)))
+
+
 (defmethod dispatch/report :note/created
   [deps event {:keys [uuid]}]
-  (let [note (note/by-uuid (->db deps) uuid)
-        type (if (note/ticket? note) "ticket" "note")]
+  (let [note     (note/by-uuid (->db deps) uuid)
+        type     (if (note/ticket? note) "ticket" "note")]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel slack/crm}
+      :channel (notification-channel (->db deps) note)}
      (sm/msg
       (sm/info
        (sm/title (note/subject note)
                  (note-url (->public-hostname deps) note))
        (sm/text (note/content note))
        (sm/fields
-        (sm/field "Account" (-> note note/account account/full-name) true)
+        (sm/field "Account" (-> note note/account account/short-name) true)
         (when-let [author (note/author note)]
-          (sm/field "Author" (account/full-name author) true))
+          (sm/field "Author" (account/short-name author) true))
         (sm/field "Type" type true)))))))
 
 
@@ -70,16 +86,16 @@
         parent (note/parent note)]
     (slack/send
      (->slack deps)
-     {:channel slack/crm
+     {:channel (notification-channel (->db deps) parent)
       :uuid    (event/uuid event)}
      (sm/msg
       (sm/info
-       (sm/title (format "%s commented on a note." (-> note note/author account/full-name))
+       (sm/title (format "%s commented on a note." (-> note note/author account/short-name))
                  (note-url (->public-hostname deps) (note/parent note)))
        (sm/text (format "_%s_" (note/content note)))
        (sm/fields
         (sm/field "Parent" (note/subject parent))
-        (sm/field "Account" (-> parent note/account account/full-name))))))))
+        (sm/field "Account" (-> parent note/account account/short-name))))))))
 
 
 (defmethod dispatch/job :note.comment/created [deps event params]
