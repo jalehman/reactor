@@ -14,7 +14,7 @@
        :slack            (or slack (mock/slack))
        :weebly           (or weebly (mock/weebly))
        :stripe           (or stripe (mock/stripe))
-       :public-hostname  "https://joinstarcity.com"}
+       :public-hostname  "https://starcity.com"}
       (assoc :db db)))
 
 

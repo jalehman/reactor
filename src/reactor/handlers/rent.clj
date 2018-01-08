@@ -133,9 +133,9 @@
 
 
 (defn- payment-period [payment tz]
-  (str (date/short-date (date/to-utc-corrected-date (payment/period-start payment) tz))
+  (str (date/short-date (date/from-tz-date (payment/period-start payment) tz))
        "-"
-       (date/short-date (date/to-utc-corrected-date (payment/period-end payment) tz))))
+       (date/short-date (date/from-tz-date (payment/period-end payment) tz))))
 
 
 ;; =====================================
@@ -146,15 +146,15 @@
   (let [account      (payment/account payment)
         tz           (member-license/time-zone (member-license/by-account db account))
         days-overdue (t/in-days (t/interval
-                                 (date/to-utc-corrected-date-time (c/to-date-time (payment/due payment)) tz)
+                                 (date/from-tz-date-time (c/to-date-time (payment/period-start payment)) tz)
                                  (t/now)))]
-    (format "%s. %s's (_%s_) rent for `%s` is overdue by *%s days* (_due %s_)."
+    (format "%s. %s's (_%s_) rent for `%s` is overdue by *%s days* (_due %s_), and late fees will be assessed."
             (inc i)
             (account/short-name account)
             (account/email account)
             (payment-period payment tz)
             days-overdue
-            (-> payment payment/due (date/to-utc-corrected-date tz) date/short-date-time))))
+            (-> payment payment/due (date/from-tz-date tz) date/short-date-time))))
 
 
 (defmethod dispatch/report :rent-payments/alert-unpaid
@@ -185,9 +185,9 @@
     (mm/msg
      (mm/greet (-> payment payment/account account/first-name))
      (mm/p
-      (format "I hope all is well. I wanted to check in because your <b>rent for %s is now overdue</b> (it was <b>due by %s</b>). Please <a href='%s/login'>log in to your account</a> to pay your balance at your earliest opportunity."
+      (format "I hope all is well. I wanted to check in because your <b>rent for %s is now overdue and past the grace period</b> (the grace period ended on %s). Please <a href='%s/login'>log in to your account</a> to pay your balance at your earliest opportunity."
               (payment-period payment tz)
-              (date/short-date-time (date/to-utc-corrected-date (payment/due payment) tz))
+              (date/short-date-time (date/from-tz-date (payment/due payment) tz))
               hostname))
      (mm/p "While you're there, I'd highly encourage you to enroll in <b>Autopay</b> so you don't have to worry about missing due dates and having late fees assessed in the future.")
      (mm/p "If you're having trouble remitting payment, please let us know so we can figure out how best to accommodate you.")
@@ -203,7 +203,7 @@
      "Starcity: Your Rent is Overdue"
      (rent-overdue-body (->db deps) payment (->public-hostname deps))
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@joinstarcity.com>"})))
+      :from "Starcity <meagan@starcity.com>"})))
 
 
 ;; =====================================
@@ -237,21 +237,15 @@
 ;; with multiple kinds of payments.
 
 (defn- payment-due-soon-body [deps payment as-of]
-  (let [tz             (->> payment
-                            payment/account
-                            (member-license/active (->db deps))
-                            member-license/time-zone)
-        due            (date/to-utc-corrected-date (payment/due payment) tz)
-        as-of          (date/to-utc-corrected-date as-of tz)
-        days-until-due (->> due
-                            c/to-date-time
-                            (t/interval (c/to-date-time as-of))
-                            t/in-days
-                            inc)]
+  (let [tz  (->> payment
+                 payment/account
+                 (member-license/active (->db deps))
+                 member-license/time-zone)
+        due (date/from-tz-date (payment/due payment) tz)]
     (mm/msg
      (mm/greet (-> payment payment/account account/first-name))
      (mm/p
-      (format "This is a friendly reminder to let you know that your rent payment of $%.2f is <b>due in %s day(s)</b> by %s." (payment/amount payment) days-until-due (date/short-date-time due)))
+      (format "This is a friendly reminder to let you know that your rent payment of $%.2f <b>must be made by %s</b> to avoid late fees." (payment/amount payment) (date/short-date-time due)))
      (mm/p
       (format "Please <a href='%s/login'>log in to your account</a> to pay your rent as soon as possible." (->public-hostname deps)))
      (mm/sig "Meagan Jensen" "Operations Associate"))))
@@ -267,4 +261,4 @@
      "Starcity: Your Rent is Due Soon"
      (payment-due-soon-body deps payment as-of)
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@joinstarcity.com>"})))
+      :from "Starcity <meagan@starcity.com>"})))

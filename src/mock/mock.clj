@@ -66,7 +66,7 @@
       (cs/background-check this user-id first-name last-name email dob {}))
     (background-check [this user-id first-name last-name email dob opts]
       (let [c (a/chan 1)]
-        (a/put! c {:body {} :headers {:location "https://test-community-safety.joinstarcity.com"}})
+        (a/put! c {:body {} :headers {:location "https://test-community-safety.starcity.com"}})
         c))))
 
 
