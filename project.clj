@@ -8,9 +8,9 @@
                  [org.clojure/tools.nrepl "0.2.12"]
                  [org.clojure/tools.cli "0.3.5"]
                  ;; db
-                 [starcity/blueprints "1.16.0" :exclusions [com.datomic/datomic-free]]
+                 [starcity/blueprints "1.18.0-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
                  ;; services
-                 [starcity/ribbon "0.7.0"]
+                 [starcity/ribbon "0.9.0-SNAPSHOT"]
                  [starcity/mailer "0.1.0"]
                  ;; util
                  [im.chit/hara.io.scheduler "2.5.10"]
@@ -18,7 +18,7 @@
                  [starcity/customs "0.1.0"]
                  [clj-time "0.13.0"]
                  [mount "0.1.11"]
-                 [starcity/toolbelt "0.1.11" :exclusions [com.datomic/datomic-free]]
+                 [starcity/toolbelt "0.1.12-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
                  [com.taoensso/timbre "4.10.0"]
                  [aero "1.1.2"]
                  [ring "1.6.1"]
