@@ -15,7 +15,8 @@
             [blueprints.models.account :as account]
             [blueprints.models.property :as property]
             [clojure.string :as string]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [cheshire.core :as json]))
 
 
 ;; =============================================================================
@@ -66,7 +67,7 @@
 (defn descriptor-for
   [db payment transaction]
   (->> ((juxt txn-desc property-desc person-desc) db payment transaction)
-       (string/upper-case)
+       (map string/upper-case)
        (interpose " ")
        (apply str)))
 
@@ -76,13 +77,18 @@
   (with-connect-account (common/connect-account event)
     (let [payment (payment/by-charge-id (->db deps) source)
           desc    (descriptor-for (->db deps) payment txn)]
-      (payout/create! amount
+      ;; TODO: Extract payout id
+      ;; TODO: Add payout id to payment entity
+      (payout/create! (->stripe deps) amount
                       :description desc
                       :statement-descriptor desc
                       :currency currency
+                      :source-type "bank_account"
                       :metadata {:txn_id  txn-id
                                  :source  source
-                                 :account (account/email (payment/account payment))}))))
+                                 :account (account/email (payment/account payment))})
+      [{:db/id (:db/id payment)
+        :stripe/payout-id "TODO: Payout id"}])))
 
 
 ;; =============================================================================
@@ -94,7 +100,7 @@
 
 
 (defn has-available-balance? [stripe-event]
-  (let [available (get-in stripe-event [:object :available])
+  (let [available (get-in stripe-event [:data :object :available])
         total     (reduce #(+ %1 (:amount %2)) 0 available)]
     (> total 0)))
 
@@ -107,11 +113,12 @@
 
 
 (defn fetch-transaction-history
-  [stripe-conn]
-  (let [dt (t/minus (t/now) (t/days days-back))]
+  [stripe-conn & [days-back]]
+  (let [dt (t/minus (t/now) (t/days (or days-back reactor.handlers.stripe.balance/days-back)))]
     (:data (<!!? (balance/list-all stripe-conn
                                    :available-on {:gte (c/to-date dt)}
                                    :limit num-transactions)))))
+
 
 ;; 3. Filter all transactions by those with type #{charge, application_fee,
 ;; payment}
@@ -120,6 +127,8 @@
 (defn only-inbound-transactions
   [transactions]
   (filter
+   ;; TODO: get 'source', check if there's a payment with that charge id, check
+   ;; if that payment has a `:stripe/payout-id` associated with it. If so, skip.
    (fn [{:keys [type status] :as txn}]
      (and (#{"charge" "application_fee" "payment"} type)
           (= "available" status)))
@@ -132,7 +141,7 @@
 (defn payout-events
   [event transactions]
   (mapv
-   (fn [{:keys [id net source currency] :as txn}]
+   (fn [{:keys [id net source currency type] :as txn}]
      (event/job ::create-payout {:params       {:txn-id   id
                                                 :amount   net
                                                 :currency currency
@@ -151,15 +160,27 @@
              (only-inbound-transactions)
              (payout-events event))))))
 
-;; TODO:
-;; Test this when there is some actual available balance
-
 
 (comment
 
   (def secret-key "sk_test_mPUtCMOnGXJwD6RAWMPou8PH")
 
-  (common/event->stripe secret-key {:event/id "evt_1BOvT5IvRccmW9nOYvyjkcvp"})
+  (let [deps  {:stripe secret-key}
+        conn  reactor.datomic/conn
+        event {:event/id   "evt_1BfeA3JDow24Tc1aswLV6F2m"
+               :event/meta (pr-str {:managed-account "acct_191838JDow24Tc1a"})}]
+    (with-connect-account (common/connect-account event)
+      (let [sevent                  (common/event->stripe secret-key event)
+            ev                      (->> (fetch-transaction-history (->stripe deps) 10)
+                                         (only-inbound-transactions)
+                                         ;; (payout-events event)
+                                         #_last)
+            ;; {:keys [amount source]} (event/params ev)
+            ;; payment                 (payment/create (float (/ amount 100)) [:account/email "member@test.com"]
+            ;;                                         :for :payment.for/rent
+            ;;                                         :charge-id source)
+            ]
+        (last ev))))
 
   (d/transact reactor.datomic/conn [(event/stripe :stripe.event.balance/available {:id "evt_1BOvT5IvRccmW9nOYvyjkcvp"})])
 
@@ -167,5 +188,9 @@
   (d/entity (d/db reactor.datomic/conn) 285873023223185)
 
   (fetch-transaction-history secret-key)
+
+
+  (with-connect-account "acct_191838JDow24Tc1a"
+    (<!!? (balance/retrieve secret-key)))
 
   )
