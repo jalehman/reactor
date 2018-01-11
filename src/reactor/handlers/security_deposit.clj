@@ -4,7 +4,7 @@
             [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.payment :as payment]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
@@ -12,9 +12,9 @@
             [reactor.services.slack.message :as sm]
             [ribbon.charge :as rc]
             [taoensso.timbre :as timbre]
+            [toolbelt.async :as ta :refer [<!!?]]
             [toolbelt.core :as tb]
-            [toolbelt.predicates :as p]
-            [toolbelt.async :refer [<!!?]]
+            [toolbelt.datomic :as td]
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [clojure.string :as string]
@@ -135,7 +135,7 @@
 ;;         (member-license/deposit-connect-id license)))))
 
 ;; (s/fdef managed-account
-;;         :args (s/cat :deps map? :payment p/entity?)
+;;         :args (s/cat :deps map? :payment td/entity?)
 ;;         :ret string?)
 
 
@@ -146,7 +146,7 @@
                     :amount (float amount))))
 
 (s/fdef refund-payment!
-        :args (s/cat :deps map? :payment p/entity? :amount number?))
+        :args (s/cat :deps map? :payment td/entity? :amount number?))
 
 
 (defmethod dispatch/job :deposit.refund/payment
@@ -204,7 +204,7 @@
 (s/def ::payment-id integer?)
 (s/def ::refund-amount (s/and float? pos?))
 (s/fdef refund-params
-        :args (s/cat :deposit p/entity?
+        :args (s/cat :deposit td/entity?
                      :refund (s/and float? pos?))
         :ret (s/+ (s/keys :req-un [::payment-id ::refund-amount])))
 
@@ -223,8 +223,8 @@
 
 (s/fdef refund-deposit
         :args (s/cat :deps map?
-                     :event p/entity?
-                     :deposit p/entity?
+                     :event td/entity?
+                     :deposit td/entity?
                      :amount float?
                      :reasons string?)
         :ret map?)

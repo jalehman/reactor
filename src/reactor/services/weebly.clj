@@ -3,7 +3,7 @@
             [org.httpkit.client :as http]
             [cheshire.core :as json]
             [clojure.core.async :as a]
-            [clojure.spec :as s]))
+            [clojure.spec.alpha :as s]))
 
 
 (defn- cb [c]

@@ -5,7 +5,7 @@
             [reactor.handlers.helpers :as helpers]
             [reactor.handlers.newsletter]
             [reactor.dispatch :as dispatch]
-            [toolbelt.predicates :as p]))
+            [toolbelt.async :as ta]))
 
 
 (use-fixtures :once fixtures/conn-fixture)
@@ -15,4 +15,4 @@
   (with-conn conn
     (testing "can subscribe to newsletter"
       (let [[ev tx] (helpers/dispatch conn :newsletter/subscribe :params {:email "test@test.com"})]
-        (is (p/chan? tx))))))
+        (is (ta/chan? tx))))))

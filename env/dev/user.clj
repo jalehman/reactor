@@ -3,7 +3,7 @@
             [reactor.config :as config :refer [config]]
             [reactor.datomic :refer [conn]]
             [reactor.seed :as seed]
-            [clojure.spec.test :as stest]
+            [clojure.spec.test.alpha :as stest]
             [clojure.tools.namespace.repl :refer [refresh]]
             [mount.core :as mount :refer [defstate]]
             [taoensso.timbre :as timbre]))

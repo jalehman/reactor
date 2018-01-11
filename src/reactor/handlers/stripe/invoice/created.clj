@@ -6,7 +6,7 @@
             [blueprints.models.payment :as payment]
             [blueprints.models.service :as service]
             [clj-time.coerce :as c]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]

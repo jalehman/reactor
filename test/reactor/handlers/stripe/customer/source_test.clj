@@ -15,9 +15,9 @@
             [blueprints.models.event :as event]
             [ribbon.event :as re]
             [toolbelt
+             [async :as ta]
              [core :as tb]
-             [datomic :as td]
-             [predicates :as p]]))
+             [datomic :as td]]))
 
 
 (use-fixtures :once fixtures/conn-fixture)
@@ -107,14 +107,14 @@
       (let [account  (mock/account-tx)
             {tx :tx} (helpers/dispatch-event conn (make-event account "verification_failed") account)]
         (testing "produces channel"
-          (is (p/chan? tx))
+          (is (ta/chan? tx))
           (is (map? (a/<!! tx)))))
 
       (let [account  (mock/account-tx)
             {tx :tx} (helpers/dispatch-event conn (make-event account "verified") account)]
 
         (testing "produces channel"
-          (is (p/chan? tx))
+          (is (ta/chan? tx))
           (is (map? (a/<!! tx)))))
 
       (let [account  (mock/account-tx)
@@ -134,7 +134,7 @@
             {tx :tx} (helpers/dispatch-event conn (make-event account "verification_failed") account)]
 
         (testing "produces channel"
-          (is (p/chan? tx))
+          (is (ta/chan? tx))
           (is (map? (a/<!! tx)))))
 
       (let [account  (mock/account-tx)

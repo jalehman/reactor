@@ -1,32 +1,15 @@
 (ns reactor.sync
-  (:require [mount.core :refer [defstate]]
-            [clojure.core.async :as a]
-            [datomic.api :as d]
+  (:require [blueprints.models.application :as application]
+            [blueprints.models.sync :as sync]
+            [clj-time.coerce :as c]
             [clj-time.core :as t]
-            [clj-time.coerce :as c]))
+            [datomic.api :as d]
+            [hubspot.http :as hubspot]))
 
 ;; 12/19/17
 ;; My hunch is that this functionality belongs somewhere else, but we need
 ;; syncing to Hubspot in the near-term. Reactor is a running service and one of
 ;; the easiest to deploy, so it's a sensible place to put it for now.
-
-
-;; (defstate )
-
-;; What should happen?
-
-;; 1. hubspot-sync should be a piece of state that can `start` syncing
-
-;; (defprotocol SyncJob
-;;   "Interface to a sync job..."
-;;   (start [this] "Start syncing.")
-;;   (stop [this] "Stop syncing."))
-
-
-;; (defrecord HubspotSync [c]
-;;   SyncJob
-;;   (start [this]
-;;     (a/put! c )))
 
 
 ;; 0. We'll need to be able to convert an application into a string of text to
@@ -64,14 +47,52 @@
 ;;   - if so, get the `external-id` and update the engagement
 ;;   - if not, create an engagement and `sync` entity
 
-;; TODO:
-(defn sync-application
+
+(comment
+
+  (def conn reactor.datomic/conn)
+
+  (query-member-applications (d/db reactor.datomic/conn) (c/to-date (t/minus (t/now) (t/months 1))))
+
+  (d/entity (d/db conn) 285873023223234)
+
+  ;; Is there a sync entity for the application?
+
+  (sync/by-entity (d/db conn))
+
+  )
+
+
+(defn- sync-application
   [conn application]
   )
+
+
+(defn- should-sync?
+  "`application` should be synced if a sync entity does not exist, or the
+  application has been modified since the last sync time."
+  [db application]
+  (let [sync (sync/by-entity db application)]
+    (or (nil? sync)
+        (t/after? (c/to-date-time (application/last-modified-at db application))
+                  (c/to-date-time (sync/last-synced sync))))))
+
+
+
+(defn sync-applications
+  "Sync all member applications with Hubspot."
+  [conn]
+  (let [since        (c/to-date (t/minus (t/now) (t/months 1)))
+        applications (->> (query-member-applications (d/db conn) since)
+                          (filter (should-sync? (d/db conn))))]
+    ))
 
 
 (comment
 
   (query-member-applications (d/db reactor.datomic/conn) (c/to-date (t/minus (t/now) (t/months 1))))
+
+  (t/after? (c/to-date-time #inst "2017-01-04") (c/to-date-time #inst "2017-01-02"))
+
 
   )

@@ -7,8 +7,8 @@
             [reactor.handlers.stripe.test-utils :as tu]
             [reactor.handlers.stripe.customer.subscription.trial]
             [ribbon.event :as re]
-            [toolbelt.datomic :as td]
-            [toolbelt.predicates :as p]))
+            [toolbelt.async :as ta]
+            [toolbelt.datomic :as td]))
 
 (use-fixtures :once fixtures/conn-fixture)
 
@@ -29,5 +29,5 @@
               account (mock/account-tx :license (td/id license))
               {tx :tx :as out} (scenario conn account license)]
 
-          (is (p/chan? tx))
+          (is (ta/chan? tx))
           (is (map? (a/<!! tx))))))))

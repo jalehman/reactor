@@ -1,6 +1,8 @@
 (ns reactor.reactor
   (:require [clojure.core.async :as a]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
+            [clj-time.core :as t]
+            [clj-time.coerce :as c]
             [datomic.api :as d]
             [reactor.deps :as deps]
             [reactor.dispatch :as dispatch]
@@ -17,12 +19,8 @@
             [reactor.handlers.stripe]
             [blueprints.models.event :as event]
             [taoensso.timbre :as timbre]
-            [toolbelt
-             [async :refer [<!!?]]
-             [core :as tb]
-             [predicates :as p]]
-            [clj-time.core :as t]
-            [clj-time.coerce :as c]
+            [toolbelt.async :as ta :refer [<!!?]]
+            [toolbelt.core :as tb]
             [toolbelt.datomic :as td]))
 
 ;; =============================================================================
@@ -43,7 +41,7 @@
      m)))
 
 (s/fdef event->map
-        :args (s/cat :event p/entity?)
+        :args (s/cat :event td/entity?)
         :ret map?)
 
 
@@ -59,7 +57,7 @@
       (sequential? tx)                       (conj tx (event/successful event))
       (and (map? tx) (same-event? event tx)) [tx]
       (map? tx)                              [tx (event/successful event)]
-      (p/chan? tx)                           (do (<!!? tx) [(event/successful event)])
+      (ta/chan? tx)                          (do (<!!? tx) [(event/successful event)])
       :otherwise                             [(event/successful event)])))
 
 
@@ -215,8 +213,8 @@
       :queues          queues})))
 
 (s/fdef start!
-        :args (s/cat :conn p/conn?
-                     :chan p/chan?
+        :args (s/cat :conn td/conn?
+                     :chan ta/chan?
                      :conf deps/config?))
 
 

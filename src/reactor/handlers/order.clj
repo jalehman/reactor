@@ -17,11 +17,11 @@
             [ribbon.customer :as rcu]
             [ribbon.plan :as rp]
             [ribbon.subscription :as rs]
-            [toolbelt.async :refer [<!!?]]
-            [toolbelt.datomic :as td]
-            [toolbelt.predicates :as p]
             [taoensso.timbre :as timbre]
-            [toolbelt.date :as date]))
+            [toolbelt.async :refer [<!!?]]
+            [toolbelt.core :as tb]
+            [toolbelt.date :as date]
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Helpers
@@ -119,7 +119,7 @@
         plan-name (-> order order/service service/code)
         plan-id   (str plan-name "-" price)
         existing  (<!! (rp/fetch (->stripe deps) plan-id))]
-    (if (p/throwable? existing)
+    (if (tb/throwable? existing)
       (<!!? (rp/create! (->stripe deps) plan-id plan-name price :month))
       existing)))
 
