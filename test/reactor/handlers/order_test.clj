@@ -6,7 +6,7 @@
             [reactor.handlers.helpers :as helpers]
             [reactor.handlers.order :as rho]
             [toolbelt.datomic :as td]
-            [toolbelt.predicates :as p]
+            [toolbelt.async :as ta]
             [blueprints.models.service :as service]
             [datomic.api :as d]
             [blueprints.models.order :as order]

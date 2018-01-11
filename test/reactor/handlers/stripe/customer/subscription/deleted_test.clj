@@ -7,9 +7,9 @@
             [reactor.handlers.stripe.test-utils :as tu]
             [reactor.handlers.stripe.customer.subscription.deleted]
             [ribbon.event :as re]
-            [toolbelt.datomic :as td]
-            [toolbelt.predicates :as p]
+            [toolbelt.async :as ta]
             [toolbelt.core :as tb]
+            [toolbelt.datomic :as td]
             [blueprints.models.event :as event]
             [blueprints.models.account :as account]
             [reactor.handlers.helpers :as helpers]))
@@ -59,7 +59,7 @@
     (with-conn conn
       (let [{tx :tx} (helpers/dispatch-event conn event account)]
         (testing "produces channel"
-          (is (p/chan? tx))
+          (is (ta/chan? tx))
           (is (map? (a/<!! tx))))))))
 
 
@@ -70,5 +70,5 @@
     (with-conn conn
       (let [{tx :tx} (helpers/dispatch-event conn event account)]
         (testing "produces channel"
-          (is (p/chan? tx))
+          (is (ta/chan? tx))
           (is (map? (a/<!! tx))))))))

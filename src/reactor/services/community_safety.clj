@@ -1,11 +1,9 @@
 (ns reactor.services.community-safety
   (:require [cheshire.core :as json]
-            [clj-time
-             [coerce :as c]
-             [core :as t]]
-            [clojure
-             [spec :as s]
-             [string :as string]]
+            [clj-time.coerce :as c]
+            [clj-time.core :as t]
+            [clojure.spec.alpha :as s]
+            [clojure.string :as string]
             [org.httpkit.client :as http]
             [toolbelt.core :as tb]
             [clojure.core.async :as a]))

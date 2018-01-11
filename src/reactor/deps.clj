@@ -1,5 +1,5 @@
 (ns reactor.deps
-  (:require [clojure.spec :as s]
+  (:require [clojure.spec.alpha :as s]
             [ribbon.core :as ribbon]
             [reactor.services.community-safety :as cs]
             [mailer.core :as mailer]

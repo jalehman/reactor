@@ -16,9 +16,9 @@
             reactor.handlers.stripe.invoice.created
             [reactor.handlers.stripe.test-utils :as tu]
             [ribbon.event :as re]
+            [toolbelt.async :as ta]
             [toolbelt.core :as tb]
-            [toolbelt.datomic :as td]
-            [toolbelt.predicates :as p]))
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; invoice.created
@@ -48,7 +48,7 @@
 
           (testing "a rent payment is added to the member license"
             (let [py (first (:member-license/rent-payments (tb/find-by :member-license/rent-payments tx)))]
-              (is (p/entity? py))
+              (is (td/entity? py))
               (is (= (payment/invoice-id py) (re/subject-id event))
                   "the invoice id made it onto the payment")))
 
@@ -106,7 +106,7 @@
             event    (event/notify :reactor.handlers.stripe.invoice.created/notify.rent
                                    {:params {:account-id [:account/email (account/email account)]}})
             {tx :tx} (helpers/dispatch-event conn event account)]
-        (is (p/chan? tx))
+        (is (ta/chan? tx))
         (is (map? (a/<!! tx)))))))
 
 
@@ -128,5 +128,5 @@
           (let [order    (assoc (order/create account service {:price 10.0})
                                 :stripe/subs-id (ic/subs-id stripe-event))
                 {tx :tx} (helpers/dispatch-event conn event account order)]
-            (is (p/chan? tx))
+            (is (ta/chan? tx))
             (is (map? (a/<!! tx)))))))))

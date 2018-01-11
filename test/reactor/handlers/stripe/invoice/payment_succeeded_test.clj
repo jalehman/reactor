@@ -17,9 +17,9 @@
             reactor.handlers.stripe.invoice.payment-succeeded
             [reactor.handlers.stripe.test-utils :as tu]
             [ribbon.event :as re]
+            [toolbelt.async :as ta]
             [toolbelt.core :as tb]
-            [toolbelt.datomic :as td]
-            [toolbelt.predicates :as p]))
+            [toolbelt.datomic :as td]))
 
 (use-fixtures :once fixtures/conn-fixture)
 
@@ -108,7 +108,7 @@
             {tx :tx} (helpers/dispatch-event conn event license account payment
                                              (member-license/add-rent-payments license payment))]
         (testing "produces a channel"
-          (is (p/chan? tx))
+          (is (ta/chan? tx))
           (is (map? (a/<!! tx))))))))
 
 
@@ -131,5 +131,5 @@
             {tx :tx} (helpers/dispatch-event conn event license account payment
                                              (member-license/add-rent-payments license payment))]
         (testing "produces a channel"
-          (is (p/chan? tx))
+          (is (ta/chan? tx))
           (is (map? (a/<!! tx))))))))

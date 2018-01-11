@@ -1,14 +1,12 @@
 (ns reactor.handlers.stripe.common
-  (:require [clojure.spec :as s]
-            [blueprints.models.event :as event]
+  (:require [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
-            [ribbon
-             [core :as ribbon]
-             [event :as re]]
-            [toolbelt
-             [async :refer [<!!?]]
-             [predicates :as p]]))
+            [clojure.spec.alpha :as s]
+            [ribbon.core :as ribbon]
+            [ribbon.event :as re]
+            [toolbelt.datomic :as td]
+            [toolbelt.async :refer [<!!?]]))
 
 (defn fetch-event
   "Fetch the event data from Stripe given a reactor event."
@@ -19,7 +17,7 @@
 
 (s/fdef fetch-event
         :args (s/cat :conn ribbon/conn?
-                     :event p/entity?)
+                     :event td/entity?)
         :ret map?)
 
 

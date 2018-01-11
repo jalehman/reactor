@@ -3,27 +3,31 @@
   :url "https://github.com/starcity-properties/reactor"
   :license {:name "Eclipse Public License"
             :url  "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
-                 [org.clojure/core.async "0.3.443"]
-                 [org.clojure/tools.nrepl "0.2.12"]
+  :dependencies [[org.clojure/clojure "1.9.0"]
+                 [org.clojure/core.async "0.4.474"]
+                 [org.clojure/tools.nrepl "0.2.13"]
                  [org.clojure/tools.cli "0.3.5"]
                  ;; db
-                 [starcity/blueprints "1.17.0-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
+                 [starcity/blueprints "1.19.0-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
                  ;; services
-                 [starcity/ribbon "0.7.0"]
-                 [starcity/mailer "0.1.0"]
+                 [starcity/ribbon "0.9.0"]
+                 [starcity/mailer "0.2.0"]
+                 [starcity/hubspot-clj "0.1.0-SNAPSHOT"]
                  ;; util
                  [im.chit/hara.io.scheduler "2.5.10"]
-                 [starcity/drawknife "0.2.0"]
-                 [starcity/customs "0.1.0"]
-                 [clj-time "0.13.0"]
-                 [mount "0.1.11"]
-                 [starcity/toolbelt "0.1.11" :exclusions [com.datomic/datomic-free]]
+                 [starcity/drawknife "1.0.0"]
+                 [starcity/customs "1.0.0"]
+                 [starcity/toolbelt-async "0.4.0"]
+                 [starcity/toolbelt-core "0.3.0"]
+                 [starcity/toolbelt-date "0.3.0"]
+                 [starcity/toolbelt-datomic "0.2.0"]
                  [com.taoensso/timbre "4.10.0"]
+                 [clj-time "0.14.2"]
+                 [mount "0.1.11"]
                  [aero "1.1.2"]
-                 [ring "1.6.1"]
+                 [ring "1.6.3"]
                  ;; dependency resolution
-                 [org.apache.httpcomponents/httpclient "4.5.3"]]
+                 [org.apache.httpcomponents/httpclient "4.5.4"]]
 
   :plugins [[s3-wagon-private "1.2.0"]]
 

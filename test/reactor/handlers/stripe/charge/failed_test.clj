@@ -14,9 +14,9 @@
             [reactor.handlers.helpers :refer :all]
             reactor.handlers.stripe.charge.failed
             [reactor.handlers.stripe.test-utils :as tu]
+            [toolbelt.async :as ta]
             [toolbelt.core :as tb]
-            [toolbelt.datomic :as td]
-            [toolbelt.predicates :as p]))
+            [toolbelt.datomic :as td]))
 
 (use-fixtures :once fixtures/conn-fixture)
 
@@ -154,5 +154,5 @@
           c       (dispatch/report (deps db) event (event/params event))]
 
       (testing "produces a channel"
-        (is (p/chan? c))
+        (is (ta/chan? c))
         (is (map? (a/<!! c)))))))

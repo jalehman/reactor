@@ -11,7 +11,7 @@
             [reactor.handlers.helpers :as helpers]
             [reactor.handlers.rent :as rent]
             [toolbelt.core :as tb]
-            [toolbelt.predicates :as p]))
+            [toolbelt.async :as ta]))
 
 (def test-licenses
   [;; valid license
@@ -144,5 +144,5 @@
           {tx :tx} (helpers/dispatch-event conn event)]
 
       (testing "a channel is produced"
-        (is (p/chan? tx))
+        (is (ta/chan? tx))
         (is (map? (a/<!! tx)))))))

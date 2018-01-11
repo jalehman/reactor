@@ -5,9 +5,8 @@
              [member-license :as member-license]
              [service :as service]
              [order :as order]]
-            [clojure
-             [spec :as s]
-             [test :refer :all]]
+            [clojure.spec.alpha :as s]
+            [clojure.test :refer :all]
             [clojure.core.async :as a]
             [datomic.api :as d]
             [reactor
@@ -17,7 +16,7 @@
             [reactor.handlers.helpers :as helpers]
             [toolbelt
              [core :as tb]
-             [predicates :as p]]))
+             [async :as ta]]))
 
 (use-fixtures :once fixtures/conn-fixture)
 
@@ -72,7 +71,7 @@
             (let [db  (:db-after @(d/transact conn tx))
                   ev  (event/by-uuid db (:event/uuid ev-tx))
                   res (dispatch/notify (helpers/deps db) ev (event/params ev))]
-              (is (p/chan? res) "produces a channel.")
+              (is (ta/chan? res) "produces a channel.")
               (is (map? (a/<!! res)) "the channel holds a map."))))))
 
     (testing "parameter validity"
