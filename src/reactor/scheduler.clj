@@ -3,25 +3,36 @@
             [datomic.api :as d]
             [hara.io.scheduler :as sch]
             [mount.core :refer [defstate]]
+            [reactor.config :as config :refer [config]]
             [reactor.datomic :refer [conn]]
-            [taoensso.timbre :as timbre]))
+            [reactor.hubspot-sync :as hubspot-sync]
+            [taoensso.timbre :as timbre]
+            [toolbelt.core :as tb]))
 
 (defn- create-scheduler [conn]
   (let [params {:conn conn}]
     (sch/scheduler
-     {:create-rent-payments
-      {:handler  (fn [t {conn :conn}]
-                   (d/transact-async conn [(events/create-monthly-rent-payments t)]))
-       ;; first of every month
-       :params   params
-       :schedule "0 0 0 * 1 * *"}
+     (tb/assoc-when
+      {:create-rent-payments
+       {:handler  (fn [t {conn :conn}]
+                    (d/transact-async conn [(events/create-monthly-rent-payments t)]))
+        ;; first of every month
+        :params   params
+        :schedule "0 0 0 * 1 * *"}
 
-      :daily-events
-      {:handler  (fn [t {conn :conn}]
-                   (d/transact-async conn [(events/process-daily-tasks t)]))
-       :params   params
-       ;; 9am every day
-       :schedule "0 0 9 * * * *"}}
+       :daily-events
+       {:handler  (fn [t {conn :conn}]
+                    (d/transact-async conn [(events/process-daily-tasks t)]))
+        :params   params
+        ;; 9am every day
+        :schedule "0 0 9 * * * *"}}
+
+      :hubspot-application-sync
+      (when (config/production? config)
+        {:handler  (fn [t {conn :conn}]
+                     (hubspot-sync/sync-applications conn))
+         :params   params
+         :schedule "0 0 8-19 MON,TUE,WED,THU,FRI * * *"}))
      {}
      {:clock {:timezone "PST"}})))
 
