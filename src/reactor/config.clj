@@ -11,15 +11,38 @@
                                 :profile  (:env (mount/args))})))
 
 
+;; ==============================================================================
+;; hubspot ======================================================================
+;; ==============================================================================
+
+
+(defn hubspot-api-key
+  "The HubSpot API key."
+  [config]
+  (get-in config [:secrets :hubspot :api-key]))
+
+
 ;; =============================================================================
 ;; Hosts
 ;; =============================================================================
 
 
 (defn public-hostname
-  "The hostname of this public server."
+  "The hostname of the public server."
   [config]
   (get-in config [:hosts :public]))
+
+
+(defn apply-hostname
+  "The hostname of the apply server."
+  [config]
+  (get-in config [:hosts :apply]))
+
+
+(defn dashboard-hostname
+  "The hostname of the dashboard server."
+  [config]
+  (get-in config [:hosts :dashboard]))
 
 
 ;; =============================================================================
