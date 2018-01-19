@@ -32,7 +32,7 @@
         {:handler  (fn [t {conn :conn}]
                      (hubspot-sync/sync-applications conn))
          :params   params
-         :schedule "0 0 8-19 MON,TUE,WED,THU,FRI * * *"}))
+         :schedule "0 0 8-19 * * * *"}))
      {}
      {:clock {:timezone "PST"}})))
 
