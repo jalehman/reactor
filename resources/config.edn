@@ -20,7 +20,11 @@
 
          :apply #profile {:prod  "https://apply.starcity.com"
                           :stage "https://apply.staging.starcity.com"
-                          :dev   "http://localhost:8081"}}
+                          :dev   "http://localhost:8081"}
+
+         :dashboard #profile {:prod  "https://my.starcity.com"
+                              :stage "https://my.staging.starcity.com"
+                              :dev   "http://localhost:8082"}}
 
  :mailgun #profile {:prod    {:domain  "mg.starcity.com"
                               :sender  "Starcity <meg@starcity.com>"
