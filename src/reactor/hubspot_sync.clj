@@ -99,7 +99,7 @@
   (let [account (application/account application)]
     (->> (format "%s/accounts/%s"
                  (config/dashboard-hostname config)
-                 (td/id application))
+                 (td/id account))
          (content* "View on Dashboard"))))
 
 
