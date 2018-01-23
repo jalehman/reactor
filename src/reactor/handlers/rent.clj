@@ -56,14 +56,16 @@
 
 (defmethod dispatch/job :rent-payment/create
   [deps event {:keys [start end amount member-license-id] :as params}]
-  (let [license (d/entity (->db deps) member-license-id)
-        account (member-license/account license)
-        payment (payment/create amount account
-                                :pstart start
-                                :pend end
-                                :due (due-date start (member-license/time-zone license))
-                                :status :payment.status/due
-                                :for :payment.for/rent)]
+  (let [license  (d/entity (->db deps) member-license-id)
+        account  (member-license/account license)
+        property (account/current-property (->db deps) account)
+        payment  (payment/create amount account
+                                 :pstart start
+                                 :pend end
+                                 :due (due-date start (member-license/time-zone license))
+                                 :status :payment.status/due
+                                 :property property
+                                 :for :payment.for/rent)]
     [(event/notify :rent-payment/create
                    {:params       {:member-license-id member-license-id
                                    :amount            amount}
