@@ -115,16 +115,19 @@
 ;; =============================================================================
 
 
-;; 1. Inspect `sevent` for an available balance with a positive available balance
+;; Inspect `sevent` for an available balance with a positive available balance
 
 
-(defn has-available-balance? [stripe-event]
-  (let [available (get-in stripe-event [:data :object :available])
-        total     (reduce #(+ %1 (:amount %2)) 0 available)]
-    (> total 0)))
+(defn total-balance [balance-event]
+  (let [available (get-in balance-event [:data :object :available])]
+    (reduce #(+ %1 (:amount %2)) 0 available)))
 
 
-;; 2. When positive, fetch balance history (`ribbon.balance/list-all`) for last
+(defn has-available-balance? [balance-event]
+  (> (total-balance balance-event) 0))
+
+
+;; When positive, fetch balance history (`ribbon.balance/list-all`) for last
 ;; three days (set `limit` to `100`).
 
 (def days-back "Number of days to search back for." 3)
@@ -139,7 +142,7 @@
                                    :limit num-transactions)))))
 
 
-;; 3. Filter all transactions by those with type #{charge, application_fee,
+;; Filter all transactions by those with type #{charge, application_fee,
 ;; payment}
 
 
@@ -153,8 +156,29 @@
             (= "available" status))))
    transactions))
 
-;; 4. For each transaction, create a payout in the amount of the `:net`
-;;      - The `:source` key is the charge/payment id
+
+;; Make sure that we don't try to pay out transactions that we don't have the
+;; balance to pay out.
+
+
+(defn take-while-within-balance
+  "Ensures that we don't try to create payouts for transactions that we don't have
+  the balance to pay out."
+  [total transactions]
+  (:txes
+   (reduce
+    (fn [acc {:keys [net] :as tx}]
+      (if (< (- (:total acc) net) 0)
+        acc
+        (-> acc
+            (update :txes conj tx)
+            (update :total - net))))
+    {:txes  []
+     :total total}
+    transactions)))
+
+
+;; For each transaction, create a payout in the amount of the `:net`
 
 
 (defn payout-events
@@ -176,9 +200,14 @@
   (with-connect-account (common/connect-account event)
     (let [sevent (common/event->stripe (->stripe deps) event)]
       (when (has-available-balance? sevent)
-        (->> (fetch-transaction-history (->stripe deps))
-             (only-inbound-transactions (->db deps))
-             (payout-events event))))))
+        (let [transactions (fetch-transaction-history (->stripe deps))
+              net-sum      (reduce #(+ %1 (:net %2)) 0 transactions)]
+          (when (pos? net-sum)
+            (->> transactions
+                 (sort-by :available_on >)
+                 (only-inbound-transactions (->db deps))
+                 (take-while-within-balance (total-balance sevent))
+                 (payout-events event))))))))
 
 
 (comment
@@ -190,19 +219,30 @@
         event {:event/id   "evt_1BlQJbJDow24Tc1aLHvm3994"
                :event/meta (pr-str {:managed-account "acct_191838JDow24Tc1a"})}]
     (with-connect-account (common/connect-account event)
-      (let [sevent (common/event->stripe secret-key event)
-            ev   (->> (fetch-transaction-history (->stripe deps) 10)
-                      (only-inbound-transactions (d/db conn))
-                      (payout-events event)
-                      last)]
-        ;; @(d/transact conn [ev])
-        )))
+      (common/event->stripe secret-key event)
+      #_(let [sevent (common/event->stripe secret-key event)
+              ev     (->> (fetch-transaction-history (->stripe deps) 10)
+                          (only-inbound-transactions (d/db conn))
+                          (payout-events event)
+                          last)]
+          ;; @(d/transact conn [ev])
+          )))
 
 
-  (d/transact reactor.datomic/conn [(event/stripe :stripe.event.balance/available {:id "evt_1BlQJbJDow24Tc1aLHvm3994"})])
+  (d/transact reactor.datomic/conn [(event/stripe :stripe.event.balance/available {:id   "evt_1BlQJbJDow24Tc1aLHvm3994"
+                                                                                   :meta {:managed-account "acct_191838JDow24Tc1a"}})])
 
 
-  (fetch-transaction-history secret-key)
+  (let [transactions (fetch-transaction-history secret-key)
+        total        (reduce #(+ %1 (:net %2)) 0 transactions)]
+    total
+    #_(->> transactions
+           (sort-by :available_on >)
+           (map #(update % :available_on (comp c/to-date-time (partial * 1000))))
+           (reduce (fn [acc ]))))
+
+
+
 
 
   (with-connect-account "acct_191838JDow24Tc1a"
