@@ -6,6 +6,7 @@
             [reactor.handlers.stripe.common :as common]
             [ribbon.core :refer [with-connect-account]]
             [ribbon.balance :as balance]
+            [ribbon.charge :as rch]
             [ribbon.event :as re]
             [ribbon.payout :as payout]
             [taoensso.timbre :as timbre]
@@ -76,22 +77,23 @@
 
 (defn create-payout!
   [stripe desc {:keys [txn-id amount currency source]} & {:keys [email]}]
-  (<!!? (payout/create! stripe amount
-                        :description desc
-                        :statement-descriptor desc
-                        :currency currency
-                        :source-type "bank_account"
-                        :metadata (tb/assoc-when
-                                   {:txn_id txn-id
-                                    :source source}
-                                   :email email))))
+  (let [source-type (get-in (<!!? (rch/fetch stripe source)) [:source :object])]
+    (<!!? (payout/create! stripe amount
+                         :description desc
+                         :statement-descriptor desc
+                         :currency currency
+                         :source-type source-type
+                         :metadata (tb/assoc-when
+                                    {:txn_id txn-id
+                                     :source source}
+                                    :email email)))))
 
 
 (defn create-payment-backed-payout [deps payment txn]
   (let [payout (create-payout! (->stripe deps)
                                (descriptor-for (->db deps) payment txn)
-                               (account/email (payment/account payment))
-                               txn)]
+                               txn
+                               :email (account/email (payment/account payment)))]
     [(transaction/create (:txn-id txn) (:source txn)
                          :payment payment
                          :payout-id (:id payout))]))
