@@ -24,9 +24,6 @@
 (defn ->slack [deps] (:slack deps))
 
 
-(defn ->weebly [deps] (:weebly deps))
-
-
 (defn ->stripe [deps] (:stripe deps))
 
 

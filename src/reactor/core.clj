@@ -52,8 +52,6 @@
    :slack            {:webhook-url (config/slack-webhook-url config)
                       :username    (config/slack-username config)}
    :community-safety {:api-key (config/community-safety-api-key config)}
-   :weebly           {:site-id (config/weebly-site-id config)
-                      :form-id (config/weebly-form-id config)}
    :stripe           {:secret-key (config/stripe-secret-key config)}
    :public-hostname  (config/public-hostname config)})
 

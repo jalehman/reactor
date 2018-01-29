@@ -6,7 +6,6 @@
             [mailer.core :as mailer]
             [reactor.services.community-safety :as cs]
             [reactor.services.slack :as slack]
-            [reactor.services.weebly :as weebly]
             [ribbon.core :as ribbon]
             [toolbelt.core :as tb]))
 
@@ -99,12 +98,4 @@
     (request [this conf params]
       (let [c (a/chan 1)]
         (a/put! c (or payload {:conf conf :params params}))
-        c))))
-
-
-(defn weebly []
-  (reify weebly/WeeblyPromote
-    (subscribe! [this email]
-      (let [c (a/chan 1)]
-        (a/put! c {:body {:email email}})
         c))))

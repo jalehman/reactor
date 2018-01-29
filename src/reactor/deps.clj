@@ -5,7 +5,6 @@
             [mailer.core :as mailer]
             [reactor.config :as config :refer [config]]
             [reactor.services.slack :as slack]
-            [reactor.services.weebly :as weebly]
             [ribbon.core :as ribbon]
             [mock.mock :as mock]
             [toolbelt.core :as tb]))
@@ -38,12 +37,6 @@
     (slack/slack webhook-url username)))
 
 
-(defn- weebly [{:keys [site-id form-id]}]
-  (if (and (some? site-id) (some? form-id))
-    (weebly/weebly site-id form-id)
-    (mock/weebly)))
-
-
 (defn- stripe [{:keys [secret-key]}]
   (if (some? secret-key)
     (ribbon/stripe-connection secret-key)
@@ -64,9 +57,6 @@
 (s/def :config/community-safety
   (s/keys :req-un [:community-safety/api-key]))
 
-(s/def :config/weebly
-  (s/keys :req-un [:weebly/site-id :weebly/form-id]))
-
 (s/def :config/stripe
   (s/keys :req-un [:stripe/secret-key]))
 
@@ -75,7 +65,6 @@
                    :config/slack
                    ::public-hostname]
           :opt-un [:config/community-safety
-                   :config/weebly
                    :config/stripe]))
 
 
@@ -91,14 +80,12 @@
 (s/def ::mailer #(satisfies? mailer.core/Mailer %))
 (s/def ::community-safety #(satisfies? reactor.services.community-safety/ICommunitySafety %))
 (s/def ::slack #(satisfies? reactor.services.slack/ISlack %))
-(s/def ::weebly #(satisfies? reactor.services.weebly/WeeblyPromote %))
 (s/def ::stripe ribbon/conn?)
 (s/def ::public-hostname string?)
 (s/def ::deps
   (s/keys :req-un [::mailer
                    ::community-safety
                    ::slack
-                   ::weebly
                    ::stripe
                    ::public-hostname]))
 
@@ -110,7 +97,6 @@
    {:community-safety (mock/community-safety)
     :mailer           (mock/mailer)
     :slack            (mock/slack)
-    :weebly           (mock/weebly)
     :stripe           (mock/stripe)
     :public-hostname  "http://localhost:8080"})
   ([config]
@@ -118,7 +104,6 @@
    {:community-safety (community-safety (:community-safety config))
     :mailer           (mailer (:mailer config))
     :slack            (slack (:slack config))
-    :weebly           (weebly (:weebly config))
     :stripe           (stripe (:stripe config))
     :public-hostname  (:public-hostname config)}))
 
