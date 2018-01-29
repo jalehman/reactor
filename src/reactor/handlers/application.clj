@@ -1,25 +1,21 @@
 (ns reactor.handlers.application
-  (:require [blueprints.models
-             [account :as account]
-             [address :as address]
-             [application :as application]
-             [event :as event]]
+  (:require [blueprints.models.account :as account]
+            [blueprints.models.address :as address]
+            [blueprints.models.application :as application]
+            [blueprints.models.event :as event]
             [clojure.string :as string]
             [datomic.api :as d]
-            [mailer
-             [core :as mailer]
-             [message :as mm]
-             [senders :as senders]]
+            [hiccup.core :as html]
+            [mailer.core :as mailer]
+            [mailer.message :as mm]
+            [mailer.senders :as senders]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
-            [reactor.services
-             [community-safety :as cf]
-             [slack :as slack]]
+            [reactor.services.community-safety :as cf]
+            [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
-            [toolbelt
-             [async :refer [<!!?]]
-             [core :as tb]]))
-
+            [toolbelt.async :refer [<!!?]]
+            [toolbelt.core :as tb]))
 
 ;; =============================================================================
 ;; Application Submission
@@ -64,7 +60,7 @@
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Thank you for completing Starcity's membership application. Next:")
-      (hiccup.core/html
+      (html/html
        [:ol
         [:li "We'll process your application (community safety and financial checks) to pre-qualify you for the community,"]
         [:li "and then notify you as soon as you're pre-qualified."]])

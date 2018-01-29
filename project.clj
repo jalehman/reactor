@@ -14,6 +14,7 @@
                  [starcity/mailer "0.2.0"]
                  [starcity/hubspot-clj "0.1.0"]
                  ;; util
+                 [hiccup "1.0.5"]
                  [im.chit/hara.io.scheduler "2.5.10"]
                  [starcity/drawknife "1.0.0"]
                  [starcity/customs "1.0.0"]
@@ -27,8 +28,7 @@
                  [aero "1.1.2"]
                  [ring "1.6.3"]
                  ;; dependency resolution
-                 [org.apache.httpcomponents/httpclient "4.5.4"]
-                 [hiccup "1.0.5"]]
+                 [org.apache.httpcomponents/httpclient "4.5.4"]]
 
   :plugins [[s3-wagon-private "1.2.0"]]
 

@@ -1,25 +1,24 @@
 (ns reactor.hubspot-sync
   (:refer-clojure :exclude [sync])
   (:require [blueprints.models.account :as account]
+            [blueprints.models.address :as address]
             [blueprints.models.application :as application]
+            [blueprints.models.license :as license]
+            [blueprints.models.property :as property]
             [blueprints.models.sync :as sync]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
             [clojure.string :as string]
             [datomic.api :as d]
+            [hiccup.core :as html]
             [hubspot.contact :as contact]
             [hubspot.engagement :as engagement]
             [hubspot.http :as hubspot]
             [mount.core :refer [defstate]]
-            [org.httpkit.client :as http]
             [reactor.config :as config :refer [config]]
             [taoensso.timbre :as timbre]
-            [toolbelt.datomic :as td]
             [toolbelt.core :as tb]
-            [blueprints.models.license :as license]
-            [blueprints.models.property :as property]
-            [blueprints.models.address :as address]))
-
+            [toolbelt.datomic :as td]))
 
 ;; ==============================================================================
 ;; hubspot syncing ==============================================================
@@ -118,7 +117,7 @@
 (defn- engagement-body
   "Generate the body for the HubSpot engagement."
   [application]
-  (hiccup.core/html
+  (html/html
    [:div
     (map #(content-for % application) application-keys)]))
 
