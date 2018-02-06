@@ -87,13 +87,6 @@
 ;; =============================================================================
 
 
-(defn- retry-link [deps payment]
-  (let [deposit (deposit/by-payment payment)]
-    (if (deposit/partially-paid? deposit)
-      (format "%s/me/account/rent" (->public-hostname deps))
-      (format "%s/onboarding" (->public-hostname deps)))))
-
-
 (defmethod dispatch/notify ::notify.deposit [deps event {:keys [account-id payment-id]}]
   (let [[account payment] (td/entities (->db deps) account-id payment-id)]
     (mailer/send
@@ -104,10 +97,8 @@
       (mm/greet (account/first-name account))
       (mm/p "Unfortunately your security deposit payment failed to go through.")
       (mm/p "The most common reason for this are insufficient funds.")
-      ;; If it's partially paid, that means that the user is no longer
-      ;; in onboarding.
       (mm/p "Please log back in to Starcity by clicking "
-            [:a {:href (retry-link deps payment)} "this link"]
+            [:a {:href (->dashboard-hostname deps)} "this link"]
             " to retry your payment.")
       mail/accounting-sig)
      {:uuid (event/uuid event)
@@ -123,8 +114,8 @@
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Unfortunately your rent payment has failed to go through.")
-      (mm/p (format "Please log back into your <a href='%s/me/account/rent'>member dashboard</a> and try your payment again."
-                    (->public-hostname deps)))
+      (mm/p (format "Please log back into your <a href='%s/profile'>member dashboard</a> and try your payment again."
+                    (->dashboard-hostname deps)))
       mail/accounting-sig)
      {:uuid (event/uuid event)
       :from mail/from-accounting})))
@@ -142,8 +133,8 @@
       (mm/p (format "Unfortunately your payment for '%s' has failed to go through."
                     (-> order order/service service/name)))
       (mm/p "Your payment will be retried soon, so please ensure that the credit/debit card you provided is the one that we should charge.")
-      (mm/p (format "You can log back into your member dashboard <a href='%s/me'>here</a> to update your payment information."
-                    (->public-hostname deps)))
+      (mm/p (format "You can log back into your member dashboard <a href='%s/profile'>here</a> to update your payment information."
+                    (->dashboard-hostname deps)))
       mail/accounting-sig)
      {:uuid (event/uuid event)
       :from mail/from-accounting})))

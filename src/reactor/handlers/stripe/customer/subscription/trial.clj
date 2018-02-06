@@ -33,7 +33,7 @@
       (mm/greet (account/first-name account))
       (mm/p "This is a friendly reminder that, since you configured <b>autopay</b>, your first payment will be taking place on the <b>1st of the upcoming month</b>.")
       (mm/p "For more details, log in to your Starcity account "
-            [:a {:href (format "%s/me/account/rent" (->public-hostname deps))} "here"]
+            [:a {:href (format "%s/profile" (->dashboard-hostname deps))} "here"]
             ".")
       mail/accounting-sig)
      {:uuid (event/uuid event)

@@ -15,6 +15,9 @@
 (defn ->public-hostname [deps] (:public-hostname deps))
 
 
+(defn ->dashboard-hostname [deps] (:dashboard-hostname deps))
+
+
 (defn ->mailer [deps] (:mailer deps))
 
 
@@ -33,5 +36,5 @@
 
 
 (defn account-link [hostname account]
-  (let [url (format "%s/admin/accounts/%s" hostname (:db/id account))]
+  (let [url (format "%s/accounts/%s" hostname (:db/id account))]
     (sm/link url (account/full-name account))))

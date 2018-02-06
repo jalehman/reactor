@@ -53,7 +53,7 @@
        (sm/title "Autopay Deactivated")
        (sm/text (format "%s's Autopay has been deactivated." (account/full-name account)))
        (sm/fields
-        (sm/field "Account" (account-link (->public-hostname deps) account))))))))
+        (sm/field "Account" (account-link (->dashboard-hostname deps) account))))))))
 
 
 ;; =============================================================================

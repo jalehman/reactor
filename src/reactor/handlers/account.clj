@@ -30,13 +30,13 @@
 
 (defn- unit-link [hostname unit]
   (let [property (unit/property unit)
-        url      (format "%s/admin/properties/%s/units/%s"
+        url      (format "%s/communities/%s/units/%s"
                          hostname (:db/id property) (:db/id unit))]
     (sm/link url (:unit/name unit))))
 
 
 (defn- property-link [hostname property]
-  (let [url (format "%s/admin/properties/%s" hostname (:db/id property))]
+  (let [url (format "%s/communities/%s" hostname (:db/id property))]
     (sm/link url (property/name property))))
 
 
@@ -130,10 +130,10 @@
        (sm/msg
         (sm/info
          (sm/title (format "%s ordered premium services:" (account/full-name account))
-                   (account-link (->public-hostname deps) account))
+                   (account-link (->dashboard-hostname deps) account))
          (sm/text (->> (map-indexed fmt-order orders) (interpose "\n") (apply str)))
          (sm/fields
-          (sm/field "Account" (account-link (->public-hostname deps) account)))))))))
+          (sm/field "Account" (account-link (->dashboard-hostname deps) account)))))))))
 
 
 ;; =============================================================================
@@ -151,8 +151,8 @@
       (sm/info
        (sm/text (format "*%s* is now a member!" (account/full-name account)))
        (sm/fields
-        (sm/field "Account" (account-link (->public-hostname deps) account) true)
-        (sm/field "Unit" (unit-link (->public-hostname deps) (member-license/unit license)) true)))))))
+        (sm/field "Account" (account-link (->dashboard-hostname deps) account) true)
+        (sm/field "Unit" (unit-link (->dashboard-hostname deps) (member-license/unit license)) true)))))))
 
 
 ;; =============================================================================
@@ -171,9 +171,9 @@
       member!</b> We're looking forward to having you join the community and
       can't wait to get to know you better.")
    (mm/p (format "The next step to getting settled in is to log into your <a
-      href='%s/me'>member dashboard</a>. This is where you'll be able to pay
+      href='%s'>member dashboard</a>. This is where you'll be able to pay
       your rent payments and the remainder of your security deposit (if
-      applicable). You can choose to <a href='%s/me/account/rent'>enable
+      applicable). You can choose to <a href='%s/profile/payments/sources'>enable
       autopay</a> or make individual rent payments going forward." hostname hostname))
    (mm/p "Please let us know if you have any questions about the move-in
       process or need assistance navigating the dashboard.")
@@ -184,7 +184,7 @@
   (let [property (-> (member-license/active (->db deps) account) member-license/property)]
     (mailer/send (->mailer deps) (account/email account)
                  (promotion-email-subject property)
-                 (promotion-email-body (->public-hostname deps) account)
+                 (promotion-email-body (->dashboard-hostname deps) account)
                  {:from mail/from-community
                   :uuid (event/uuid event)})))
 
@@ -234,8 +234,8 @@
                 (account/first-name approvee)))
        (sm/fields
         (sm/field "Email" (account/email approvee) true)
-        (sm/field "Property" (property-link (->public-hostname deps) property) true)
-        (sm/field "Unit" (unit-link (->public-hostname deps) unit) true)
+        (sm/field "Property" (property-link (->dashboard-hostname deps) property) true)
+        (sm/field "Unit" (unit-link (->dashboard-hostname deps) unit) true)
         (sm/field "Move-in" (date/short-date (approval/move-in approval)) true)
         (sm/field "Term" (format "%s months" (license/term license)) true)))))))
 

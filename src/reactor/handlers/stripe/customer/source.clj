@@ -32,13 +32,6 @@
 ;; =============================================================================
 
 
-(defn- link [account hostname]
-  (cond
-    (account/onboarding? account) (format "%s/onboarding" hostname)
-    (account/member? account)     (format "%s/me/account/rent" hostname)
-    :otherwise                    (throw (ex-info "Invalid role." {:role (account/role account)}))))
-
-
 (defmulti notify
   "Notify the customer of a verification event."
   status-dispatch)
@@ -57,7 +50,7 @@
       (mm/greet (account/first-name account))
       (mm/p "Unfortunately we were unable to make the two small deposits to the bank account you provided &mdash; it's likely that the information provided was incorrect.")
       (mm/p "Please log back in to Starcity by clicking "
-            [:a {:href (link account (->public-hostname deps))} "this link"]
+            [:a {:href (->dashboard-hostname deps)} "this link"]
             " to re-enter your bank account information.")
       mail/accounting-sig)
      {:uuid (event/uuid event)

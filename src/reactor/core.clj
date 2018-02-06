@@ -47,25 +47,27 @@
 
 
 (defn- prod-config [config]
-  {:mailer           {:api-key (config/mailgun-api-key config)
-                      :domain  (config/mailgun-domain config)}
-   :slack            {:webhook-url (config/slack-webhook-url config)
-                      :username    (config/slack-username config)}
-   :community-safety {:api-key (config/community-safety-api-key config)}
-   :stripe           {:secret-key (config/stripe-secret-key config)}
-   :public-hostname  (config/public-hostname config)})
+  {:mailer             {:api-key (config/mailgun-api-key config)
+                        :domain  (config/mailgun-domain config)}
+   :slack              {:webhook-url (config/slack-webhook-url config)
+                        :username    (config/slack-username config)}
+   :community-safety   {:api-key (config/community-safety-api-key config)}
+   :stripe             {:secret-key (config/stripe-secret-key config)}
+   :public-hostname    (config/public-hostname config)
+   :dashboard-hostname (config/dashboard-hostname config)})
 
 
 (defn- dev-config [config]
-  {:mailer          {:api-key (config/mailgun-api-key config)
-                     :domain  (config/mailgun-domain config)
-                     :sender  (config/mailgun-sender config)
-                     :send-to "josh@starcity.com"}
-   :slack           {:webhook-url (config/slack-webhook-url config)
-                     :username    (config/slack-username config)
-                     :channel     "#debug"}
-   :stripe          {:secret-key (config/stripe-secret-key config)}
-   :public-hostname (config/public-hostname config)})
+  {:mailer             {:api-key (config/mailgun-api-key config)
+                        :domain  (config/mailgun-domain config)
+                        :sender  (config/mailgun-sender config)
+                        :send-to "josh@starcity.com"}
+   :slack              {:webhook-url (config/slack-webhook-url config)
+                        :username    (config/slack-username config)
+                        :channel     "#debug"}
+   :stripe             {:secret-key (config/stripe-secret-key config)}
+   :public-hostname    (config/public-hostname config)
+   :dashboard-hostname (config/dashboard-hostname config)})
 
 
 (defstate reactor

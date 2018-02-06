@@ -25,7 +25,7 @@
   (mm/msg
    (mm/greet (account/first-name account))
    (mm/p (format "It's that time again! Your rent payment of $%.2f is <b>due by the 5th</b>." amount))
-   (mm/p "Please log into your member dashboard " [:a {:href (str hostname "/me/account/rent")} "here"]
+   (mm/p "Please log into your member dashboard " [:a {:href (str hostname "/profile")} "here"]
          " to pay your rent with ACH. <b>If you'd like to stop getting these reminders, sign up for autopay while you're there!</b>")
    mail/accounting-sig))
 
@@ -38,7 +38,7 @@
      (->mailer deps)
      (account/email account)
      (mail/subject "Your Rent is Due")
-     (rent-reminder-body account amount (->public-hostname deps))
+     (rent-reminder-body account amount (->dashboard-hostname deps))
      {:uuid (event/uuid event)
       :from mail/accounting-sig})))
 

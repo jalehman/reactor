@@ -33,8 +33,8 @@
   [deps event {app-id :application-id}]
   (let [account (-> (d/entity (->db deps) app-id) application/account)
         title   (format "%s's application" (account/full-name account))
-        link    (format "%s/admin/accounts/%s"
-                        (->public-hostname deps)
+        link    (format "%s/accounts/%s"
+                        (->dashboard-hostname deps)
                         (:db/id account))]
     (slack/send
      (->slack deps)

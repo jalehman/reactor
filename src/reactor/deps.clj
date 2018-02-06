@@ -63,7 +63,8 @@
 (s/def ::config
   (s/keys :req-un [:config/mailer
                    :config/slack
-                   ::public-hostname]
+                   ::public-hostname
+                   ::dashboard-hostname]
           :opt-un [:config/community-safety
                    :config/stripe]))
 
@@ -82,30 +83,34 @@
 (s/def ::slack #(satisfies? reactor.services.slack/ISlack %))
 (s/def ::stripe ribbon/conn?)
 (s/def ::public-hostname string?)
+(s/def ::dashboard-hostname string?)
 (s/def ::deps
   (s/keys :req-un [::mailer
                    ::community-safety
                    ::slack
                    ::stripe
-                   ::public-hostname]))
+                   ::public-hostname
+                   ::dashboard-hostname]))
 
 
 (defn deps
   "Construct the dependencies map for `reactor` to function. When the no-arg
   variant is used mock dependencies will be used."
   ([]
-   {:community-safety (mock/community-safety)
-    :mailer           (mock/mailer)
-    :slack            (mock/slack)
-    :stripe           (mock/stripe)
-    :public-hostname  "http://localhost:8080"})
+   {:community-safety   (mock/community-safety)
+    :mailer             (mock/mailer)
+    :slack              (mock/slack)
+    :stripe             (mock/stripe)
+    :public-hostname    "http://localhost:8080"
+    :dashboard-hostname "http://localhost:8082"})
   ([config]
    (s/assert ::config config)
-   {:community-safety (community-safety (:community-safety config))
-    :mailer           (mailer (:mailer config))
-    :slack            (slack (:slack config))
-    :stripe           (stripe (:stripe config))
-    :public-hostname  (:public-hostname config)}))
+   {:community-safety   (community-safety (:community-safety config))
+    :mailer             (mailer (:mailer config))
+    :slack              (slack (:slack config))
+    :stripe             (stripe (:stripe config))
+    :public-hostname    (:public-hostname config)
+    :dashboard-hostname (:dashboard-hostname config)}))
 
 (s/fdef deps
         :args (s/cat :config ::config)

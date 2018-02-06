@@ -20,7 +20,7 @@
 
 
 (defn- note-url [hostname note]
-  (format "%s/admin/accounts/%s/notes" hostname (-> note note/account :db/id)))
+  (format "%s/accounts/%s/notes" hostname (-> note note/account :db/id)))
 
 
 ;; =============================================================================
@@ -53,7 +53,7 @@
      (sm/msg
       (sm/info
        (sm/title (note/subject note)
-                 (note-url (->public-hostname deps) note))
+                 (note-url (->dashboard-hostname deps) note))
        (sm/text (note/content note))
        (sm/fields
         (sm/field "Account" (-> note note/account account/short-name) true)
@@ -91,7 +91,7 @@
      (sm/msg
       (sm/info
        (sm/title (format "%s commented on a note." (-> note note/author account/short-name))
-                 (note-url (->public-hostname deps) (note/parent note)))
+                 (note-url (->dashboard-hostname deps) (note/parent note)))
        (sm/text (format "_%s_" (note/content note)))
        (sm/fields
         (sm/field "Parent" (note/subject parent))
