@@ -1,19 +1,19 @@
 (ns reactor.handlers.stripe.customer.subscription.deleted
-  (:require [blueprints.models.event :as event]
+  (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
+            [blueprints.models.member-license :as member-license]
+            [datomic.api :as d]
+            [mailer.core :as mailer]
+            [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
+            [reactor.services.slack :as slack]
+            [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [ribbon.event :as re]
             [taoensso.timbre :as timbre]
-            [blueprints.models.member-license :as member-license]
-            [toolbelt.datomic :as td]
-            [datomic.api :as d]
-            [mailer.core :as mailer]
-            [blueprints.models.account :as account]
-            [mailer.message :as mm]
-            [reactor.services.slack :as slack]
-            [reactor.services.slack.message :as sm]))
-
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Notify
@@ -26,13 +26,14 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Autopay Deactivated"
+     (mail/subject "Autopay Deactivated")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Autopay has been deactivated for your account.")
       (mm/p "If this comes as a surprise, please log in to your member dashboard or reach out to your community manager for help.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 ;; =============================================================================

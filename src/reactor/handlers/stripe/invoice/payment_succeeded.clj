@@ -11,6 +11,7 @@
             [reactor.handlers.stripe.invoice.common :as ic]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [ribbon.event :as re]
             [taoensso.timbre :as timbre]))
 
@@ -26,15 +27,16 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Autopay Payment Successful"
+     (mail/subject "Autopay Payment Successful")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p
        (format "This is a friendly reminder to let you know that your rent payment of $%.2f has been successfully paid."
                (payment/amount payment)))
       (mm/p "Thanks for using Autopay!")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 ;; =============================================================================

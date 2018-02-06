@@ -1,28 +1,27 @@
 (ns reactor.handlers.security-deposit
   (:require [blueprints.models.account :as account]
-            [blueprints.models.security-deposit :as deposit]
             [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.payment :as payment]
+            [blueprints.models.security-deposit :as deposit]
+            [clj-time.coerce :as c]
+            [clj-time.core :as t]
             [clojure.spec.alpha :as s]
+            [clojure.string :as string]
             [datomic.api :as d]
+            [mailer.core :as mailer]
+            [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [ribbon.charge :as rc]
             [taoensso.timbre :as timbre]
             [toolbelt.async :as ta :refer [<!!?]]
             [toolbelt.core :as tb]
-            [toolbelt.datomic :as td]
-            [mailer.core :as mailer]
-            [mailer.message :as mm]
-            [clojure.string :as string]
-            [toolbelt.datomic :as td]
-            [clj-time.core :as t]
-            [clj-time.coerce :as c]
-            [toolbelt.date :as date]))
-
+            [toolbelt.date :as date]
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; First Payment
@@ -93,7 +92,7 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Security Deposit Refund"
+     (mail/subject "Security Deposit Refund")
      (mm/msg
       (mm/greet (account/first-name account))
       (if partial
@@ -104,8 +103,9 @@
       (when partial
         (mm/p (format "<i>%s</i>" (-> reasons (string/replace #"\n" "<br>")))))
       (mm/p "It may take up to <b>10 business days</b> for the funds to be returned to your account.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 (defmethod dispatch/job :deposit.refund/finish
@@ -313,7 +313,7 @@
               (date/short-date-time (date/to-utc-corrected-date (deposit/due deposit) tz))
               hostname))
      (mm/p "If you're having trouble remitting payment, please let me know so I can figure out how best to accommodate you.")
-     (mm/sig "Meagan Jensen" "Operations Associate"))))
+     mail/accounting-sig)))
 
 
 (defmethod dispatch/notify :deposits/alert-unpaid
@@ -322,10 +322,10 @@
     (mailer/send
      (->mailer deps)
      (account/email (deposit/account deposit))
-     "Starcity: Your Security Deposit is Overdue"
+     (mail/subject "Your Security Deposit is Overdue")
      (deposit-overdue-body (->db deps) deposit (->public-hostname deps))
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@starcity.com>"})))
+      :from mail/from-accounting})))
 
 
 ;; =====================================
@@ -365,7 +365,7 @@
       (format "This is a friendly reminder to let you know that your remaining security deposit payment of $%.2f is <b>due in %s day(s)</b> by %s." (deposit/amount-remaining deposit) days-until-due (date/short-date-time due)))
      (mm/p
       (format "Please <a href='%s/login'>log in to your account</a> to pay your balance as soon as possible." (->public-hostname deps)))
-     (mm/sig "Meagan Jensen" "Operations Associate"))))
+     mail/accounting-sig)))
 
 
 (defmethod dispatch/notify :deposit/due [deps event {:keys [deposit-id as-of]}]
@@ -373,10 +373,10 @@
     (mailer/send
      (->mailer deps)
      (account/email (deposit/account deposit))
-     "Starcity: Your Security Deposit is Due Soon"
+     (mail/subject "Your Security Deposit is Due Soon")
      (deposit-due-soon-body deps deposit as-of)
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@starcity.com>"})))
+      :from mail/from-accounting})))
 
 
 (comment

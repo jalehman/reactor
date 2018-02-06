@@ -13,16 +13,15 @@
             [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]
-            [mailer.senders :as senders]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [ring.util.codec :refer [url-encode]]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
             [toolbelt.datomic :as td]))
-
 
 ;; =============================================================================
 ;; Helpers
@@ -51,7 +50,7 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Activate Your Account"
+     (mail/subject "Activate Your Account")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Thanks for signing up!")
@@ -161,7 +160,7 @@
 
 
 (defn- ^:private promotion-email-subject [property]
-  (format "Starcity: Welcome to %s!" (property/name property)))
+  (mail/subject (format "Welcome to %s!" (property/name property))))
 
 
 (defn- promotion-email-body [hostname account]
@@ -178,7 +177,7 @@
       autopay</a> or make individual rent payments going forward." hostname hostname))
    (mm/p "Please let us know if you have any questions about the move-in
       process or need assistance navigating the dashboard.")
-   (mm/sig "Meg" "Head of Community")))
+   mail/community-sig))
 
 
 (defn- send-promotion-email [deps account event]
@@ -186,7 +185,7 @@
     (mailer/send (->mailer deps) (account/email account)
                  (promotion-email-subject property)
                  (promotion-email-body (->public-hostname deps) account)
-                 {:from senders/meg
+                 {:from mail/from-community
                   :uuid (event/uuid event)})))
 
 
@@ -260,7 +259,7 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Password Reset"
+     (mail/subject "Password Reset")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "As requested, we have reset your password. Your temporary password is:")

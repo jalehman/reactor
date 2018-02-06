@@ -11,6 +11,7 @@
             [reactor.handlers.stripe.common :as common]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [ribbon.customer :as rcu]
             [ribbon.event :as re]
             [toolbelt.async :refer [<!!?]]
@@ -51,15 +52,16 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Bank Verification Failed"
+     (mail/subject "Bank Verification Failed")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Unfortunately we were unable to make the two small deposits to the bank account you provided &mdash; it's likely that the information provided was incorrect.")
       (mm/p "Please log back in to Starcity by clicking "
             [:a {:href (link account (->public-hostname deps))} "this link"]
             " to re-enter your bank account information.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 (defmethod dispatch/notify :stripe.event.customer.source/updated

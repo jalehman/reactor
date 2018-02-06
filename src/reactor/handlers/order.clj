@@ -13,6 +13,7 @@
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
+            [reactor.utils.mail :as mail]
             [ribbon.charge :as rc]
             [ribbon.customer :as rcu]
             [ribbon.plan :as rp]
@@ -188,7 +189,7 @@
     (mailer/send
      (->mailer deps)
      (account/email orderer)
-     (format "Starcity: Your order for %s has been placed" (order-name order))
+     (mail/subject (format "Your order for %s has been placed" (order-name order)))
      (mm/msg
       (mm/greet (account/first-name orderer))
       (mm/p
@@ -226,7 +227,7 @@
     (mailer/send
      (->mailer deps)
      (account/email orderer)
-     (format "Starcity: Your order for %s has been fulfilled" (order-name order))
+     (mail/subject (format "Your order for %s has been fulfilled" (order-name order)))
      (mm/msg
       (mm/greet (account/first-name orderer))
       (mm/p
@@ -261,7 +262,7 @@
     (mailer/send
      (->mailer deps)
      (account/email orderer)
-     (format "Starcity: Your order for %s has been canceled" (order-name order))
+     (mail/subject (format "Your order for %s has been canceled" (order-name order)))
      (mm/msg
       (mm/greet (account/first-name orderer))
       (mm/p

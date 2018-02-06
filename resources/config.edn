@@ -27,7 +27,7 @@
                               :dev   "http://localhost:8082"}}
 
  :mailgun #profile {:prod    {:domain  "mg.starcity.com"
-                              :sender  "Starcity <meg@starcity.com>"
+                              :sender  "Starcity Team <team@starcity.com>"
                               :api-key ^:ref [:secrets :mailgun :api-key]}
                     :default {:domain  "sandboxeec004e4d33845edaef9b962843713a7.mailgun.org"
                               :sender  "Mailgun Sandbox <postmaster@sandboxeec004e4d33845edaef9b962843713a7.mailgun.org>"

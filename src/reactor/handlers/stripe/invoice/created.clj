@@ -14,6 +14,7 @@
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
             [reactor.handlers.stripe.invoice.common :as ic]
+            [reactor.utils.mail :as mail]
             [ribbon.event :as re]
             [taoensso.timbre :as timbre]
             [toolbelt.datomic :as td]))
@@ -32,13 +33,14 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Autopay Payment Pending"
+     (mail/subject "Autopay Payment Pending")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "This is a friendly reminder that your autopay payment is being processed.")
       (mm/p "Please note that it may take up to <b>7 business days</b> for the funds to be withdrawn from your account.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 (defmethod dispatch/notify ::notify.service [deps event {:keys [subs-id]}]
@@ -49,13 +51,14 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     (format "Starcity: %s payment pending" (service/name service))
+     (mail/subject (format "%s payment pending" (service/name service)))
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p (format "This is a friendly reminder that your monthly payment ($%.2f) for %s is being processed and should post shortly."
                     (order/computed-price order) (service/name service)))
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 ;; =============================================================================

@@ -14,6 +14,7 @@
             [reactor.handlers.stripe.invoice.common :as ic]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [ribbon.event :as re]
             [taoensso.timbre :as timbre]))
 
@@ -28,13 +29,14 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Autopay Payment Failed"
+     (mail/subject "Autopay Payment Failed")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Unfortunately, your Autopay payment for this month's rent has failed.")
       (mm/p "We'll retry again <b>tomorrow</b>. In the meantime, please ensure that you have sufficient funds in the account that you have linked to Autopay.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 (defmethod dispatch/notify ::notify.service [deps event {:keys [invoice]}]
@@ -45,14 +47,15 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     (format "Starcity: Payment Failed for '%s'" (service/desc service))
+     (mail/subject (format "Payment Failed for '%s'" (service/desc service)))
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p (format "Unfortunately, your recurring payment of $%.2f for <b>%s</b> has failed."
                     (order/computed-price order) (service/desc service)))
       (mm/p "We'll try the payment again within the next couple of days; in the meantime, please ensure that your payment source has sufficient funds.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 (defmethod dispatch/notify ::notify.service.final [deps event {:keys [invoice]}]
@@ -63,14 +66,15 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     (format "Starcity: Final Payment Failed for '%s'" (service/desc service))
+     (mail/subject (format "Final Payment Failed for '%s'" (service/desc service)))
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p (format "Our final attempt to charge you for <b>%s</b> has failed."
                     (service/desc service)))
       (mm/p "Expect a member of our team to reach out shortly to coordinate next steps.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 ;; =============================================================================

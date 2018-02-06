@@ -3,6 +3,8 @@
             [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.payment :as payment]
+            [clj-time.coerce :as c]
+            [clj-time.core :as t]
             [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]
@@ -10,11 +12,9 @@
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]
-            [clj-time.coerce :as c]
-            [clj-time.core :as t]
-            [taoensso.timbre :as timbre]))
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Create Payment
@@ -27,7 +27,7 @@
    (mm/p (format "It's that time again! Your rent payment of $%.2f is <b>due by the 5th</b>." amount))
    (mm/p "Please log into your member dashboard " [:a {:href (str hostname "/me/account/rent")} "here"]
          " to pay your rent with ACH. <b>If you'd like to stop getting these reminders, sign up for autopay while you're there!</b>")
-   (mm/sig)))
+   mail/accounting-sig))
 
 
 (defmethod dispatch/notify :rent-payment/create
@@ -37,9 +37,10 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Your Rent is Due"
+     (mail/subject "Your Rent is Due")
      (rent-reminder-body account amount (->public-hostname deps))
-     {:uuid (event/uuid event)})))
+     {:uuid (event/uuid event)
+      :from mail/accounting-sig})))
 
 
 (defn- due-date [start tz]
@@ -191,7 +192,7 @@
               hostname))
      (mm/p "While you're there, I'd highly encourage you to enroll in <b>Autopay</b> so you don't have to worry about missing due dates and having late fees assessed in the future.")
      (mm/p "If you're having trouble remitting payment, please let us know so we can figure out how best to accommodate you.")
-     (mm/sig "Meagan Jensen" "Operations Associate"))))
+     mail/accounting-sig)))
 
 
 (defmethod dispatch/notify :rent-payments/alert-unpaid
@@ -200,10 +201,10 @@
     (mailer/send
      (->mailer deps)
      (account/email (payment/account payment))
-     "Starcity: Your Rent is Overdue"
+     (mail/subject "Your Rent is Overdue")
      (rent-overdue-body (->db deps) payment (->public-hostname deps))
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@starcity.com>"})))
+      :from mail/from-accounting})))
 
 
 ;; =====================================
@@ -248,7 +249,7 @@
       (format "This is a friendly reminder to let you know that your rent payment of $%.2f <b>must be made by %s</b> to avoid late fees." (payment/amount payment) (date/short-date-time due)))
      (mm/p
       (format "Please <a href='%s/login'>log in to your account</a> to pay your rent as soon as possible." (->public-hostname deps)))
-     (mm/sig "Meagan Jensen" "Operations Associate"))))
+     mail/accounting-sig)))
 
 
 (defmethod dispatch/notify :payment/due [deps event {:keys [payment-id as-of]}]
@@ -261,4 +262,4 @@
      "Starcity: Your Rent is Due Soon"
      (payment-due-soon-body deps payment as-of)
      {:uuid (event/uuid event)
-      :from "Starcity <meagan@starcity.com>"})))
+      :from mail/from-accounting})))

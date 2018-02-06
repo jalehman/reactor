@@ -12,6 +12,7 @@
             [reactor.handlers.stripe.common :as common]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [ribbon.event :as re]
             [taoensso.timbre :as timbre]
             [toolbelt.datomic :as td]))
@@ -98,7 +99,7 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Security Deposit Payment Failure"
+     (mail/subject "Security Deposit Payment Failure")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Unfortunately your security deposit payment failed to go through.")
@@ -108,8 +109,9 @@
       (mm/p "Please log back in to Starcity by clicking "
             [:a {:href (retry-link deps payment)} "this link"]
             " to retry your payment.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 (defmethod dispatch/notify ::notify.rent [deps event {:keys [account-id payment-id]}]
@@ -117,14 +119,15 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Rent Payment Failed"
+     (mail/subject "Rent Payment Failed")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Unfortunately your rent payment has failed to go through.")
       (mm/p (format "Please log back into your <a href='%s/me/account/rent'>member dashboard</a> and try your payment again."
                     (->public-hostname deps)))
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 (defmethod dispatch/notify ::notify.service [deps event {:keys [account-id payment-id]}]
@@ -133,7 +136,7 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: Service Charge Failed"
+     (mail/subject "Premium Service Charge Failed")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p (format "Unfortunately your payment for '%s' has failed to go through."
@@ -141,8 +144,9 @@
       (mm/p "Your payment will be retried soon, so please ensure that the credit/debit card you provided is the one that we should charge.")
       (mm/p (format "You can log back into your member dashboard <a href='%s/me'>here</a> to update your payment information."
                     (->public-hostname deps)))
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+      mail/accounting-sig)
+     {:uuid (event/uuid event)
+      :from mail/from-accounting})))
 
 
 ;; =============================================================================

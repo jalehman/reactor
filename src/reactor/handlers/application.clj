@@ -8,12 +8,12 @@
             [hiccup.core :as html]
             [mailer.core :as mailer]
             [mailer.message :as mm]
-            [mailer.senders :as senders]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.community-safety :as cf]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.mail :as mail]
             [toolbelt.async :refer [<!!?]]
             [toolbelt.core :as tb]))
 
@@ -56,7 +56,7 @@
     (mailer/send
      (->mailer deps)
      (account/email account)
-     "Starcity: We are Reviewing Your Application"
+     (mail/subject "We are Reviewing Your Application")
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p "Thank you for completing Starcity's membership application. Next:")
@@ -65,8 +65,8 @@
         [:li "We'll process your application (community safety and financial checks) to pre-qualify you for the community,"]
         [:li "and then notify you as soon as you're pre-qualified."]])
       (mm/p "Stay tuned and thanks for your patience!")
-      (mm/sig "Meg" "Head of Community"))
-     {:from senders/meg
+      mail/community-sig)
+     {:from mail/from-community
       :uuid (event/uuid event)})))
 
 
