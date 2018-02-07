@@ -215,7 +215,7 @@
 (s/fdef start!
         :args (s/cat :conn td/conn?
                      :chan ta/chan?
-                     :conf deps/config?))
+                     :conf (s/? deps/config?)))
 
 
 (defn stop!

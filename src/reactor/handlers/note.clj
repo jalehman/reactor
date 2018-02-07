@@ -1,18 +1,16 @@
 (ns reactor.handlers.note
-  (:require [blueprints.models
-             [account :as account]
-             [event :as event]
-             [events :as events]
-             [note :as note]]
+  (:require [blueprints.models.account :as account]
+            [blueprints.models.event :as event]
+            [blueprints.models.events :as events]
+            [blueprints.models.member-license :as member-license]
+            [blueprints.models.note :as note]
+            [blueprints.models.property :as property]
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
-            [toolbelt.core :as tb]
-            [blueprints.models.member-license :as member-license]
-            [blueprints.models.property :as property]))
-
+            [toolbelt.core :as tb]))
 
 ;; =============================================================================
 ;; Helpers
@@ -36,9 +34,7 @@
 
 (defn- notification-channel [db note]
   (let [code (when-let [a (note/account note)]
-               (-> (member-license/active db a)
-                   member-license/property
-                   property/internal-name))]
+               (property/code (account/current-property db a)))]
     (get property-channel code slack/crm)))
 
 
@@ -58,8 +54,7 @@
        (sm/fields
         (sm/field "Account" (-> note note/account account/short-name) true)
         (when-let [author (note/author note)]
-          (sm/field "Author" (account/short-name author) true))
-        (sm/field "Type" type true)))))))
+          (sm/field "Author" (account/short-name author) true))))))))
 
 
 (defmethod dispatch/job :note/created [deps event params]
@@ -94,8 +89,8 @@
                  (note-url (->dashboard-hostname deps) (note/parent note)))
        (sm/text (format "_%s_" (note/content note)))
        (sm/fields
-        (sm/field "Parent" (note/subject parent))
-        (sm/field "Account" (-> parent note/account account/short-name))))))))
+        (sm/field "Parent" (note/subject parent) true)
+        (sm/field "Account" (-> parent note/account account/short-name) true)))))))
 
 
 (defmethod dispatch/job :note.comment/created [deps event params]
