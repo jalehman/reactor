@@ -154,7 +154,7 @@
                 :firstname (account/first-name account)
                 :lastname  (account/last-name account)}]
     (timbre/info ::create-contact {:email (account/email account)})
-    (contact/create! (account/email account) {:params params})))
+    (contact/create! (account/email account) params)))
 
 
 (defn sync-new-applicant!
