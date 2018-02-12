@@ -7,6 +7,7 @@
             [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.property :as property]
+            [blueprints.models.sync :as sync]
             [blueprints.models.unit :as unit]
             [clojure.string :as string]
             [customs.auth :as auth]
@@ -21,7 +22,11 @@
             [ring.util.codec :refer [url-encode]]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]))
+            [toolbelt.datomic :as td]
+            [blueprints.models.application :as application]
+            [hubspot.contact :as contact]
+            [taoensso.timbre :as timbre]
+            [clj-time.core :as t]))
 
 ;; =============================================================================
 ;; Helpers
@@ -91,6 +96,21 @@
 ;; =============================================================================
 ;; Promotion
 ;; =============================================================================
+
+
+;; hubspot close date ===========================================================
+
+
+(defmethod dispatch/job ::set-hubspot-close-date [deps event params]
+  (let [account (d/entity (->db deps) (:account-id params))
+        contact (-> account account/email contact/fetch)]
+    (if-let [error (:error contact)]
+      (timbre/warn ::set-hubspot-close-date-error {:account (account/email account)
+                                                   :data    error})
+      (let [now (date/tz-uncorrected (java.util.Date.)
+                                     (t/time-zone-for-id "America/Los_Angeles"))]
+        (contact/update! (:canonical-vid contact)
+                         {:closedate (.getTime now)})))))
 
 
 ;; =============================================================================
@@ -206,7 +226,9 @@
                      {:params params :triggered-by event})
 
        (event/report :account.promoted/order-summary
-                     {:params params :triggered-by event})])))
+                     {:params params :triggered-by event})
+       (event/job ::set-hubspot-close-date
+                  {:params params :triggered-by event})])))
 
 
 ;; =============================================================================
