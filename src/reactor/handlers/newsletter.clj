@@ -7,4 +7,4 @@
 (defmethod dispatch/job :newsletter/subscribe [deps event {email :email}]
   (when-let [key (config/hubspot-api-key config)]
     (let [c (clojure.core.async/chan 1)]
-      (contact/create! email {:api-key key :out-ch c}))))
+      (contact/create! email {} {:api-key key :out-ch c}))))
