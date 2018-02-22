@@ -10,7 +10,7 @@
                  ;; db
                  [starcity/blueprints "2.2.0" :exclusions [com.datomic/datomic-free]]
                  ;; services
-                 [starcity/ribbon "0.10.0"]
+                 [starcity/ribbon "0.11.0"]
                  [starcity/mailer "0.2.0"]
                  [starcity/hubspot-clj "0.2.0"]
                  ;; util
