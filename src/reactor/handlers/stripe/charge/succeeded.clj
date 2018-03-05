@@ -13,8 +13,8 @@
 
 
 (defmulti process-successful-charge
-  "Using the charge's type, produce a transaction to update any entities (if
-  any) that need to be updated in the db."
+  "Using the charge's type, produce a transaction to update any entities (if any)
+  that need to be updated in the db."
   (fn [deps payment event]
     (payment/payment-for2 (->db deps) payment)))
 

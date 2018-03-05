@@ -1,12 +1,15 @@
 (ns user
   (:require [reactor.core]
+            [clojure.core.async :as a]
             [reactor.config :as config :refer [config]]
             [reactor.datomic :refer [conn]]
             [reactor.seed :as seed]
             [clojure.spec.test.alpha :as stest]
             [clojure.tools.namespace.repl :refer [refresh]]
             [mount.core :as mount :refer [defstate]]
-            [taoensso.timbre :as timbre]))
+            [taoensso.timbre :as timbre]
+            [datomic.api :as d]
+            [blueprints.core :as blueprints]))
 
 (timbre/refer-timbre)
 
