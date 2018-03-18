@@ -26,7 +26,7 @@
                  [clj-time "0.14.2"]
                  [mount "0.1.11"]
                  [aero "1.1.2"]
-                 [ring "1.6.3"]
+                 [ring/ring-codec "1.1.0"]
                  ;; dependency resolution
                  [org.apache.httpcomponents/httpclient "4.5.4"]]
 
