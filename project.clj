@@ -7,6 +7,7 @@
                  [org.clojure/core.async "0.4.474"]
                  [org.clojure/tools.nrepl "0.2.13"]
                  [org.clojure/tools.cli "0.3.5"]
+                 [org.clojure/tools.namespace "0.2.11"]
                  ;; db
                  [starcity/blueprints "2.2.0" :exclusions [com.datomic/datomic-free]]
                  ;; services
