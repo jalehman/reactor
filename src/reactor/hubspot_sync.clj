@@ -31,77 +31,6 @@
 ;; the easiest to deploy, so it's a sensible place to put it for now.
 
 
-;; engagement body ==============================================================
-
-(defn content* [label content]
-  [:div
-   [:p [:b (string/upper-case label)]]
-   [:p (or content [:i "not answered"])]])
-
-
-(defmulti content-for (fn [k application] k))
-
-
-(defmethod content-for :default [k application]
-  (content* (name k) (get application k)))
-
-
-(defmethod content-for :application/license [_ application]
-  (let [license (when-some [l (application/desired-license application)]
-                  (str (license/term l) " months"))]
-    (content* "Desired Term" license)))
-
-
-(defmethod content-for :application/communities [_ application]
-  (let [communities (when-some [cs (application/communities application)]
-                      (->> (map property/name cs)
-                           (interpose ", ")
-                           (apply str)))]
-    (content* "Desired Communities" communities)))
-
-
-(defmethod content-for :application/address [_ application]
-  (let [address (when-some [a (application/address application)]
-                  (format "%s %s, %s %s"
-                          (address/locality a)
-                          (address/region a)
-                          (address/zip a)
-                          (address/country a)))]
-    (content* "Current Address" address)))
-
-
-(defmethod content-for :application/pet [_ application]
-  (->> (cond
-         (nil? (application/has-pet? application))
-         "not answered"
-
-         (false? (application/has-pet? application))
-         [:i "no pet"]
-
-         :otherwise
-         (if-let [p (application/pet application)]
-           (format "Has a %slb %s (dog)." (:pet/weight p) (:pet/breed p))
-           "not answered"))
-       (content* "Pet")))
-
-
-(defmethod content-for :application/community-fitness [_ application]
-  (if (some? (application/community-fitness application))
-    (map
-     (fn [{:keys [label value]}]
-       (content* label value))
-     (application/community-fitness-labeled application))
-    (content* "Community Fitness" nil)))
-
-
-(defmethod content-for :application/link [_ application]
-  (let [account (application/account application)]
-    (->> (format "%s/accounts/%s"
-                 (config/dashboard-hostname config)
-                 (td/id account))
-         (content* "View on Dashboard"))))
-
-
 (def ^:private application-keys
   [:application/status
    :application/license
@@ -109,17 +38,87 @@
    :application/communities
    :application/address
    :application/pet
-   :application/community-fitness
-   :application/link
-   :application/completed-at])
+   :application/created
+   :application/updated
+   :application/completed-at
+   :application/referral])
 
 
-(defn- engagement-body
-  "Generate the body for the HubSpot engagement."
-  [application]
-  (html/html
-   [:div
-    (map #(content-for % application) application-keys)]))
+(defmulti application-param (fn [_ _ k] k))
+
+
+(defmethod application-param :default [_ _ _] nil)
+
+
+(defmethod application-param :application/status [_ application key]
+  [:application_status (name (key application))])
+
+
+(defmethod application-param :application/license [_ application key]
+  (when-let [l (key application)]
+    [:desired_term (format "%s months" (:license/term l))]))
+
+
+(defmethod application-param :application/move-in [_ application key]
+  (when-let [date (key application)]
+    [:move_in (str date)]))
+
+
+(defmethod application-param :application/communities [_ application _]
+  (when-let [cs (application/communities application)]
+    [:desired_communities
+     (->> (map property/name cs)
+          (interpose ", ")
+          (apply str))]))
+
+
+(defmethod application-param :application/address [_ application key]
+  (when-let [a (application/address application)]
+    [:current_address (format "%s %s, %s %s"
+                              (address/locality a)
+                              (address/region a)
+                              (address/zip a)
+                              (address/country a))]))
+
+
+(defmethod application-param :application/pet [_ application key]
+  (when-not (nil? (application/has-pet? application))
+    (let [x (if (false? (application/has-pet? application))
+              "No"
+              "Dog")]
+      [:pets x])))
+
+
+(defmethod application-param :application/created [db application _]
+  [:application_created_started (str (td/created-at db application))])
+
+
+(defmethod application-param :application/updated [db application _]
+  [:application_activity (str (td/updated-at db application))])
+
+
+(defmethod application-param :application/completed-at [db application _]
+  (when-let [d (d/q '[:find ?tx-time .
+                      :in $ ?a
+                      :where
+                      [?a :application/status :application.status/submitted ?tx]
+                      [?tx :db/txInstant ?tx-time]]
+                    db (td/id application))]
+    [:application_submitted (str d)]))
+
+
+(defmethod application-param :application/referral [_ _ _]
+  [:additional_source "Direct Application"])
+
+
+(defn- application-contact-params
+  [db application]
+  (reduce
+   (fn [acc key]
+     (let [[k v] (application-param db application key)]
+       (tb/assoc-when acc k v)))
+   {}
+   application-keys))
 
 
 ;; query applications ===========================================================
@@ -150,9 +149,11 @@
 (defn- create-contact!
   "Create the contact in hubspot."
   [db account application]
-  (let [params {:phone     (account/phone-number account)
-                :firstname (account/first-name account)
-                :lastname  (account/last-name account)}]
+  (let [params (merge
+                {:phone     (account/phone-number account)
+                 :firstname (account/first-name account)
+                 :lastname  (account/last-name account)}
+                (application-contact-params db application))]
     (timbre/info ::create-contact {:email (account/email account)})
     (contact/create! (account/email account) params)))
 
@@ -163,24 +164,21 @@
   (let [account     (application/account application)
         contact-ids (->> (or (-> (account/email account) contact/search :contacts not-empty)
                              [(create-contact! (d/db conn) account application)])
-                         (map :vid))
-        engagement  (engagement/create!
-                     {:engagement   {:type "NOTE"}
-                      :metadata     {:body (engagement-body application)}
-                      :associations {:contactIds (vec contact-ids)}})]
-    (timbre/info ::create-engagement {:application (td/id application)
-                                      :contact-ids contact-ids})
-    @(d/transact conn [(sync/create application (str (get-in engagement [:engagement :id])) :hubspot)])))
+                         (map :vid))]
+    (timbre/info ::sync-application {:application (td/id application)
+                                     :contact-ids contact-ids})
+    @(d/transact conn [(sync/create application "" :hubspot)])))
 
 
 (defn sync-existing-applicant!
   "Sync an existing applicant."
   [conn sync]
-  (let [application   (sync/ref sync)
-        engagement-id (tb/str->int (sync/ext-id sync))]
-    (engagement/update! engagement-id {:metadata {:body (engagement-body application)}})
-    (timbre/info ::update-engagement {:application (td/id application)})
+  (let [application (sync/ref sync)
+        account     (application/account application)]
+    (contact/update! (account/email account) (application-contact-params (d/db conn) application))
+    (timbre/info ::sync-application {:application (td/id application)})
     @(d/transact conn [(sync/synced-now sync)])))
+
 
 
 ;; sync entrypoint(s) ===========================================================
@@ -240,7 +238,7 @@
   (query-member-applications (d/db reactor.datomic/conn) (c/to-date (t/minus (t/now) (t/months 1))))
 
 
-  @(d/transact conn [{:db/id                   285873023223203
+  @(d/transact conn [{:db/id                   285873023223234
                       :application/move-in     (java.util.Date.)
                       :application/license     (:db/id (license/by-term (d/db conn) 3))
                       :application/communities [[:property/code "52gilbert"]
@@ -251,6 +249,7 @@
                                                 :address/postal-code "94133"}
                       :application/has-pet     true
                       :application/pet         {:pet/breed "pitbull" :pet/weight 50}
+                      :application/status      :application.status/submitted
                       :application/fitness     {:fitness/skills "Nunc rutrum turpis sed pede."}}])
 
 
