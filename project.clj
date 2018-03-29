@@ -8,7 +8,7 @@
                  [org.clojure/tools.nrepl "0.2.13"]
                  [org.clojure/tools.cli "0.3.5"]
                  ;; db
-                 [starcity/blueprints "2.2.0" :exclusions [com.datomic/datomic-free]]
+                 [starcity/blueprints "2.4.0-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
                  ;; services
                  [starcity/ribbon "0.11.0"]
                  [starcity/mailer "0.2.0"]
@@ -21,7 +21,7 @@
                  [starcity/toolbelt-async "0.4.0"]
                  [starcity/toolbelt-core "0.3.0"]
                  [starcity/toolbelt-date "0.3.0"]
-                 [starcity/toolbelt-datomic "0.2.0"]
+                 [starcity/toolbelt-datomic "0.5.0"]
                  [com.taoensso/timbre "4.10.0"]
                  [clj-time "0.14.2"]
                  [mount "0.1.11"]
