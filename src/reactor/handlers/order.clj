@@ -177,8 +177,40 @@
   (member-license/time-zone (member-license/by-account db account)))
 
 
-;; =====================================
-;; Placed
+;; created ==============================
+
+
+(defmethod dispatch/notify :order/created
+  [deps event {:keys [order-uuid account-id]}]
+  (let [order   (order/by-uuid (->db deps) order-uuid)
+        creator (d/entity (->db deps) account-id)
+        ;; this is who's getting the order
+        member  (order/account order)
+        tz      (time-zone (->db deps) member)]
+    (mailer/send
+     (->mailer deps)
+     (account/email member)
+     (mail/subject (format "Your order for %s has been created" (order-name order)))
+     (mm/msg
+      (mm/greet (account/first-name member))
+      (mm/p
+       (format "Your order for %s has been created%s and is now <i>pending</i>. If you change your mind, you can still cancel it before it is <i>placed</i>."
+               (order-name order)
+               (if (not= creator member) (str " by " (account/short-name creator)) "")))
+      (mm/p "Your community representative will reach out to you shortly to confirm your order. Once it is confirmed, your order will be <i>placed</i>, at which point it can no longer be canceled.")
+      (mm/sig))
+     {:uuid (event/uuid event)})))
+
+
+(defmethod dispatch/job :order/created
+  [deps event {:keys [account-id notify] :as params}]
+  (when notify
+    [(event/notify (event/key event) {:params       params
+                                      :triggered-by event})
+     (source/create account-id)]))
+
+
+;; placed ==============================
 
 
 (defmethod dispatch/notify :order/placed

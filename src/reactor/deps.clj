@@ -24,7 +24,7 @@
     (mock/community-safety)))
 
 
-(defn- mailer [{:keys [api-key domain sender send-to]}]
+(defn- mailer [{:keys [api-key domain sender send-to] :as conf}]
   (mailer/mailgun api-key domain (tb/assoc-when
                                   {}
                                   :sender sender
