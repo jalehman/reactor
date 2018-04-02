@@ -237,19 +237,20 @@
         member  (order/account order)
         tz      (time-zone (->db deps) member)]
 
-    ;; slack notification -> to community team
-    (slack/send
-     (->slack deps)
-     {:uuid    (event/uuid event)
-      :channel (notification-channel (->db deps) member)}
-     (sm/msg
-      (sm/info
-       (sm/title "New Premium Service Order"
-                 (order-url (->dashboard-hostname deps) order))
-       (sm/text (format "%s %s has just placed a Premium Service Order!" (rand-planet-express) (account/short-name member)))
-       (sm/fields
-        (sm/field "Member" (account/short-name member))
-        (sm/field "Service" (order-name order))))))))
+    ;; slack notification -> to community team (when a member makes a request)
+    (when (= (:db/id member) (:db/id creator))
+      (slack/send
+       (->slack deps)
+       {:uuid    (event/uuid event)
+        :channel (notification-channel (->db deps) member)}
+       (sm/msg
+        (sm/info
+         (sm/title "New Premium Service Order"
+                   (order-url (->dashboard-hostname deps) order))
+         (sm/text (format "%s %s has just placed a Premium Service Order!" (rand-planet-express) (account/short-name member)))
+         (sm/fields
+          (sm/field "Member" (account/short-name member))
+          (sm/field "Service" (order-name order)))))))))
 
 
 (defmethod dispatch/job :order/created
@@ -264,7 +265,13 @@
 
 (comment
   ;; make a notification event pending - evaluate the buffer, then this line
+  ;; this one came from the admin side
   @(d/transact conn [[:db/add 285873023223562 :event/status :event.status/pending]])
+
+
+
+  ;; this one came from the member side
+  @(d/transact conn [[:db/add 285873023223641 :event/status :event.status/pending]])
 
   ;; then go check debug in slack
 
