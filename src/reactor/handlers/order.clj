@@ -25,8 +25,7 @@
             [toolbelt.async :refer [<!!?]]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]
-            [re-frame.db :as db]))
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Helpers
