@@ -388,7 +388,7 @@
       (sm/info
        (sm/title "Helping Hands Order Canceled"
                  (order-url (->dashboard-hostname deps) order))
-       (sm/text (format "%s has just canceled a Helping Hands Order." (account/short-name orderer)))
+       (sm/text (format "%s has just canceled a Helping Hands Order. :sadparrot:" (account/short-name orderer)))
        (sm/fields
         (sm/field "Member" (account/short-name orderer))
         (sm/field "Service" (order-name order))))))))
@@ -398,6 +398,8 @@
   [deps event {:keys [account-id notify] :as params}]
   (when notify
     [(event/notify (event/key event) {:params       params
+                                      :triggered-by event})
+     (event/report (event/key event) {:params       params
                                       :triggered-by event})
      (source/create account-id)]))
 
