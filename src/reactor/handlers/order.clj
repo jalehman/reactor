@@ -201,7 +201,7 @@
 
 (defn- notification-channel [db account]
   (let [code (property/code (account/current-property db account))]
-      (get property-channel code slack/crm)))
+    (get property-channel code slack/crm)))
 
 
 (defmethod dispatch/notify :order/created
@@ -372,6 +372,26 @@
                (account/email placed-by)))
       (mm/sig))
      {:uuid (event/uuid event)})))
+
+
+(defmethod dispatch/report :order/canceled
+  [deps event {:keys [order-id account-id]}]
+  (let [[order placed-by] (td/entities (->db deps) order-id account-id)
+        orderer           (order/account order)]
+
+    ;; slack notification -> to community team (when a member makes a request)
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel (notification-channel (->db deps) orderer)}
+     (sm/msg
+      (sm/info
+       (sm/title "Helping Hands Order Canceled"
+                 (order-url (->dashboard-hostname deps) order))
+       (sm/text (format "%s has just canceled a Helping Hands Order." (account/short-name orderer)))
+       (sm/fields
+        (sm/field "Member" (account/short-name orderer))
+        (sm/field "Service" (order-name order))))))))
 
 
 (defmethod dispatch/job :order/canceled
