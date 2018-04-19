@@ -18,6 +18,7 @@
             [reactor.utils.mail :as mail]
             [ribbon.charge :as rc]
             [taoensso.timbre :as timbre]
+            [teller.payment :as tpayment]
             [toolbelt.async :as ta :refer [<!!?]]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
@@ -28,21 +29,20 @@
 ;; =============================================================================
 
 
-(defmethod dispatch/report :deposit/payment-made [deps event {:keys [account-id charge]}]
+(defmethod dispatch/report :deposit/payment-made
+  [deps event {:keys [account-id payment-id]}]
   (let [account (d/entity (->db deps) account-id)
-        payment (payment/by-charge-id (->db deps) charge)]
+        payment (tpayment/by-id (->teller deps) payment-id)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
       :channel slack/ops}
      (sm/msg
       (sm/success
-       (sm/title "View Payment on Stripe"
-                 (format "https://dashboard.stripe.com/payments/%s" charge))
        (sm/text (format "%s has made a security deposit payment!"
                         (account/full-name account)))
        (sm/fields
-        (sm/field "Amount" (str "$" (payment/amount payment)) true)))))))
+        (sm/field "Amount" (str "$" (tpayment/amount payment)) true)))))))
 
 
 (defmethod dispatch/job :deposit/payment-made [deps event params]
@@ -58,15 +58,13 @@
 (defmethod dispatch/report :deposit.remainder/payment-made
   [deps event {:keys [account-id charge]}]
   (let [account (d/entity (->db deps) account-id)
-        payment (payment/by-charge-id (->db deps) charge)]
+        payment (payment/by-charge-id (->teller deps) charge)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
       :channel slack/ops}
      (sm/msg
       (sm/success
-       (sm/title "View Payment on Stripe"
-                 (format "https://dashboard.stripe.com/payments/%s" charge))
        (sm/text (format "%s has paid the remainder of his/her security deposit"
                         (account/full-name account)))
        (sm/fields
