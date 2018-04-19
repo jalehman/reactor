@@ -21,7 +21,8 @@
             [taoensso.timbre :as timbre]
             [toolbelt.async :as ta :refer [<!!?]]
             [toolbelt.core :as tb]
-            [toolbelt.datomic :as td]))
+            [toolbelt.datomic :as td]
+            [teller.core :as teller]))
 
 ;; =============================================================================
 ;; Internal
@@ -214,6 +215,7 @@
 
 (s/fdef start!
         :args (s/cat :conn td/conn?
+                     :teller teller/connection?
                      :chan ta/chan?
                      :conf (s/? deps/config?)))
 
