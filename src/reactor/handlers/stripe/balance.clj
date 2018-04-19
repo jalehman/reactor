@@ -198,18 +198,18 @@
    transactions))
 
 
-(defmethod dispatch/stripe :stripe.event.balance/available [deps event _]
-  (with-connect-account (common/connect-account event)
-    (let [sevent (common/event->stripe (->stripe deps) event)]
-      (when (has-available-balance? sevent)
-        (let [transactions (fetch-transaction-history (->stripe deps))
-              net-sum      (reduce #(+ %1 (:net %2)) 0 transactions)]
-          (when (pos? net-sum)
-            (->> transactions
-                 (sort-by :available_on >)
-                 (only-inbound-transactions (->db deps))
-                 (take-while-within-balance (total-balance sevent))
-                 (payout-events event))))))))
+;; (defmethod dispatch/stripe :stripe.event.balance/available [deps event _]
+;;   (with-connect-account (common/connect-account event)
+;;     (let [sevent (common/event->stripe (->stripe deps) event)]
+;;       (when (has-available-balance? sevent)
+;;         (let [transactions (fetch-transaction-history (->stripe deps))
+;;               net-sum      (reduce #(+ %1 (:net %2)) 0 transactions)]
+;;           (when (pos? net-sum)
+;;             (->> transactions
+;;                  (sort-by :available_on >)
+;;                  (only-inbound-transactions (->db deps))
+;;                  (take-while-within-balance (total-balance sevent))
+;;                  (payout-events event))))))))
 
 
 (comment

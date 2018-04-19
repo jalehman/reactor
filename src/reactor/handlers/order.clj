@@ -5,6 +5,7 @@
             [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.payment :as payment]
+            [blueprints.models.property :as property]
             [blueprints.models.service :as service]
             [blueprints.models.source :as source]
             [clojure.core.async :refer [<!!]]
@@ -13,6 +14,8 @@
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
+            [reactor.services.slack :as slack]
+            [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
             [ribbon.charge :as rc]
             [ribbon.customer :as rcu]
@@ -180,6 +183,27 @@
 ;; created ==============================
 
 
+(defn- rand-planet-express []
+  (let [phrases ["Good news, everyone!" "Neat." "Sweet bongo of the congo!"
+                 "Arrrooooooo!" "Hooray!" "Huzzah!" "Bam!" "Yup."]]
+    (->> phrases count rand-int (get phrases))))
+
+
+(defn- order-url [hostname order]
+  (format "%s/services/orders/%s" hostname (:db/id order)))
+
+
+(def ^:private property-channel
+  {"52gilbert"   "#52-gilbert"
+   "2072mission" "#2072-mission"
+   "6nottingham" "#6-nottingham"})
+
+
+(defn- notification-channel [db account]
+  (let [code (property/code (account/current-property db account))]
+    (get property-channel code slack/crm)))
+
+
 (defmethod dispatch/notify :order/created
   [deps event {:keys [order-uuid account-id]}]
   (let [order   (order/by-uuid (->db deps) order-uuid)
@@ -187,6 +211,8 @@
         ;; this is who's getting the order
         member  (order/account order)
         tz      (time-zone (->db deps) member)]
+
+    ;; email notification -> to member
     (mailer/send
      (->mailer deps)
      (account/email member)
@@ -202,12 +228,53 @@
      {:uuid (event/uuid event)})))
 
 
+(defmethod dispatch/report :order/created
+  [deps event {:keys [order-uuid account-id]}]
+  (let [order   (order/by-uuid (->db deps) order-uuid)
+        creator (d/entity (->db deps) account-id)
+        ;; this is who's getting the order
+        member  (order/account order)
+        tz      (time-zone (->db deps) member)]
+
+    ;; slack notification -> to community team (when a member makes a request)
+    (when (= (:db/id member) (:db/id creator))
+      (slack/send
+       (->slack deps)
+       {:uuid    (event/uuid event)
+        :channel (notification-channel (->db deps) member)}
+       (sm/msg
+        (sm/info
+         (sm/title "New Premium Service Order"
+                   (order-url (->dashboard-hostname deps) order))
+         (sm/text (format "%s %s has just placed a Premium Service Order!" (rand-planet-express) (account/short-name member)))
+         (sm/fields
+          (sm/field "Member" (account/short-name member))
+          (sm/field "Service" (order-name order)))))))))
+
+
 (defmethod dispatch/job :order/created
   [deps event {:keys [account-id notify] :as params}]
   (when notify
     [(event/notify (event/key event) {:params       params
                                       :triggered-by event})
+     (event/report (event/key event) {:params       params
+                                      :triggered-by event})
      (source/create account-id)]))
+
+
+(comment
+  ;; make a notification event pending - evaluate the buffer, then this line
+  ;; this one came from the admin side
+  @(d/transact conn [[:db/add 285873023223562 :event/status :event.status/pending]])
+
+
+
+  ;; this one came from the member side
+  @(d/transact conn [[:db/add 285873023223641 :event/status :event.status/pending]])
+
+  ;; then go check debug in slack
+
+  )
 
 
 ;; placed ==============================
@@ -307,27 +374,31 @@
      {:uuid (event/uuid event)})))
 
 
+(defmethod dispatch/report :order/canceled
+  [deps event {:keys [order-id account-id]}]
+  (let [[order placed-by] (td/entities (->db deps) order-id account-id)
+        orderer           (order/account order)]
+
+    ;; slack notification -> to community team (when a member makes a request)
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel (notification-channel (->db deps) orderer)}
+     (sm/msg
+      (sm/info
+       (sm/title "Helping Hands Order Canceled"
+                 (order-url (->dashboard-hostname deps) order))
+       (sm/text (format "%s has just canceled a Helping Hands Order. :sadparrot:" (account/short-name orderer)))
+       (sm/fields
+        (sm/field "Member" (account/short-name orderer))
+        (sm/field "Service" (order-name order))))))))
+
+
 (defmethod dispatch/job :order/canceled
   [deps event {:keys [account-id notify] :as params}]
   (when notify
     [(event/notify (event/key event) {:params       params
                                       :triggered-by event})
+     (event/report (event/key event) {:params       params
+                                      :triggered-by event})
      (source/create account-id)]))
-
-
-(comment
-
-  ;; (def conn reactor.datomic/conn)
-
-  (def conn odin.datomic/conn)
-
-  @(d/transact conn [(order/create [:account/email "member@test.com"] (service/by-code (d/db conn) "box-fan"))])
-
-  (let [order (order/by-account (d/db conn) [:account/email "member@test.com"] (service/by-code (d/db conn) "box-fan"))]
-    @(d/transact conn [#_[:db/add (:db/id order) :order/fulfilled-on (java.util.Date.)]
-                       #_[:db/add (:db/id order) :order/projected-fulfillment (java.util.Date.)]
-                       #_(blueprints.models.events/order-fulfilled [:account/email "admin@test.com"] order true)
-                       (blueprints.models.events/order-placed [:account/email "admin@test.com"] order true)
-                       #_(blueprints.models.events/order-canceled [:account/email "admin@test.com"] order true)]))
-
-  )
