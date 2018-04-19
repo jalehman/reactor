@@ -10,6 +10,7 @@
             [reactor.datomic :refer [conn]]
             [reactor.reactor :as reactor]
             [reactor.scheduler]
+            [reactor.teller :refer [teller]]
             [taoensso.timbre :as timbre]))
 
 ;; =============================================================================
@@ -75,7 +76,7 @@
                       (prod-config config)
                       (dev-config config))
                chan (a/chan (a/sliding-buffer (config/tx-report-buffer-size config)))]
-           (reactor/start! conn chan conf))
+           (reactor/start! conn teller chan conf))
   :stop (reactor/stop! reactor))
 
 

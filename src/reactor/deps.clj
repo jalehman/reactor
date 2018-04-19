@@ -5,6 +5,7 @@
             [mailer.core :as mailer]
             [reactor.config :as config :refer [config]]
             [reactor.services.slack :as slack]
+            [teller.core :as teller]
             [ribbon.core :as ribbon]
             [mock.mock :as mock]
             [toolbelt.core :as tb]))
@@ -82,6 +83,7 @@
 (s/def ::community-safety #(satisfies? reactor.services.community-safety/ICommunitySafety %))
 (s/def ::slack #(satisfies? reactor.services.slack/ISlack %))
 (s/def ::stripe ribbon/conn?)
+(s/def ::teller teller/connection?)
 (s/def ::public-hostname string?)
 (s/def ::dashboard-hostname string?)
 (s/def ::deps
@@ -89,6 +91,7 @@
                    ::community-safety
                    ::slack
                    ::stripe
+                   ::teller
                    ::public-hostname
                    ::dashboard-hostname]))
 
@@ -96,24 +99,27 @@
 (defn deps
   "Construct the dependencies map for `reactor` to function. When the no-arg
   variant is used mock dependencies will be used."
-  ([]
+  ([teller]
    {:community-safety   (mock/community-safety)
     :mailer             (mock/mailer)
     :slack              (mock/slack)
     :stripe             (mock/stripe)
+    :teller             teller
     :public-hostname    "http://localhost:8080"
     :dashboard-hostname "http://localhost:8082"})
-  ([config]
+  ([teller config]
    (s/assert ::config config)
    {:community-safety   (community-safety (:community-safety config))
     :mailer             (mailer (:mailer config))
     :slack              (slack (:slack config))
     :stripe             (stripe (:stripe config))
+    :teller             teller
     :public-hostname    (:public-hostname config)
     :dashboard-hostname (:dashboard-hostname config)}))
 
 (s/fdef deps
-        :args (s/cat :config ::config)
+        :args (s/cat :teller ::teller
+                     :config (s/? ::config))
         :ret ::deps)
 
 
