@@ -72,3 +72,4 @@
 (def crm "#crm")
 (def community "#community")
 (def log "#webserver")
+(def helping-hands "#helping-hands")
