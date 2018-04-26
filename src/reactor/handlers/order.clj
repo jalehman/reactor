@@ -230,7 +230,7 @@
       (slack/send
        (->slack deps)
        {:uuid    (event/uuid event)
-        :channel (slack/helping-hands)}
+        :channel slack/helping-hands}
        (sm/msg
         (sm/info
          (sm/title "New Premium Service Order"
@@ -372,7 +372,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (slack/helping-hands)}
+      :channel slack/helping-hands}
      (sm/msg
       (sm/info
        (sm/title "Helping Hands Order Canceled"
