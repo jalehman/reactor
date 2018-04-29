@@ -11,7 +11,7 @@
                  [starcity/blueprints "2.5.0-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
                  [starcity/teller "0.1.0-SNAPSHOT"]
                  ;; services
-                 [starcity/ribbon "0.11.0"]
+                 [starcity/stripe-clj "0.3.3"]
                  [starcity/mailer "0.2.0"]
                  [starcity/hubspot-clj "0.2.0"]
                  ;; util
