@@ -5,6 +5,7 @@
             [blueprints.models.payment :as payment]
             [blueprints.models.security-deposit :as deposit]
             [blueprints.models.service :as service]
+            [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
@@ -13,18 +14,11 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
-            [ribbon.event :as re]
             [taoensso.timbre :as timbre]
+            [teller.customer :as tcustomer]
+            [teller.event :as tevent]
+            [teller.payment :as tpayment]
             [toolbelt.datomic :as td]))
-
-;; =============================================================================
-;; Helpers
-;; =============================================================================
-
-
-(defn charge-link [id]
-  (format "https://dashboard.stripe.com/payments/%s" id))
-
 
 ;; =============================================================================
 ;; Reports
@@ -32,15 +26,16 @@
 
 
 (defmethod dispatch/report ::notify.deposit [deps event {:keys [account-id payment-id]}]
-  (let [[account payment] (td/entities (->db deps) account-id payment-id)
-        deposit           (deposit/by-account account)]
+  (let [account (d/entity (->db deps) account-id)
+        payment (tpayment/by-id (->teller deps) payment-id)
+        deposit (deposit/by-account account)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
       :channel slack/ops}
      (sm/msg
       (sm/failure
-       (sm/title "Security Deposit ACH Failure" (charge-link (payment/charge-id payment)))
+       (sm/title "Security Deposit ACH Failure")
        (sm/text (format "%s's ACH payment has failed." (account/full-name account)))
        (sm/fields
         (sm/field "Email" (account/email account) true)
@@ -49,36 +44,38 @@
 
 
 (defmethod dispatch/report ::notify.rent [deps event {:keys [account-id payment-id]}]
-  (let [[account payment] (td/entities (->db deps) account-id payment-id)]
+  (let [account (d/entity (->db deps) account-id)
+        payment (tpayment/by-id (->teller deps) payment-id)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
       :channel slack/ops}
      (sm/msg
       (sm/failure
-       (sm/title "ACH Rent Payment Failed" (charge-link (payment/charge-id payment)))
+       (sm/title "ACH Rent Payment Failed")
        (sm/text (format "%s's rent payment has failed to go through."
                         (account/full-name account)))
        (sm/fields
-        (sm/field "Amount" (format "$%.2f" (payment/amount payment)) true)
+        (sm/field "Amount" (format "$%.2f" (tpayment/amount payment)) true)
         (sm/field "Email" (account/email account) true)))))))
 
 
 (defmethod dispatch/report ::notify.service [deps event {:keys [account-id payment-id]}]
-  (let [[account payment] (td/entities (->db deps) account-id payment-id)
-        order             (order/by-payment (->db deps) payment)]
+  (let [account (d/entity (->db deps) account-id)
+        payment (tpayment/by-id (->teller deps) payment-id)
+        order   (order/by-payment (->db deps) payment)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
       :channel slack/ops}
      (sm/msg
       (sm/failure
-       (sm/title "Service Charge Failed" (charge-link (payment/charge-id payment)))
+       (sm/title "Service Charge Failed")
        (sm/text (format "%s's charge for *%s* failed."
                         (-> order order/service service/name)
                         (account/full-name account)))
        (sm/fields
-        (sm/field "Amount" (format "$%.2f" (payment/amount payment)) true)
+        (sm/field "Amount" (format "$%.2f" (tpayment/amount payment)) true)
         (sm/field "Email" (account/email account) true)))))))
 
 
@@ -88,7 +85,8 @@
 
 
 (defmethod dispatch/notify ::notify.deposit [deps event {:keys [account-id payment-id]}]
-  (let [[account payment] (td/entities (->db deps) account-id payment-id)]
+  (let [account (d/entity (->db deps) account-id)
+        payment (tpayment/by-id (->teller deps) payment-id)]
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -106,7 +104,8 @@
 
 
 (defmethod dispatch/notify ::notify.rent [deps event {:keys [account-id payment-id]}]
-  (let [[account payment] (td/entities (->db deps) account-id payment-id)]
+  (let [account (d/entity (->db deps) account-id)
+        payment (tpayment/by-id (->teller deps) payment-id)]
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -122,8 +121,9 @@
 
 
 (defmethod dispatch/notify ::notify.service [deps event {:keys [account-id payment-id]}]
-  (let [[account payment] (td/entities (->db deps) account-id payment-id)
-        order             (order/by-payment (->db deps) payment)]
+  (let [account (d/entity (->db deps) account-id)
+        payment (tpayment/by-id (->teller deps) payment-id)
+        order   (order/by-payment (->db deps) payment)]
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -147,19 +147,18 @@
 (defn notify-events [key payment event]
   (mapv
    (fn [topic]
-     (event/create key
-                   {:params       {:account-id (td/id (payment/account payment))
-                                   :payment-id (td/id payment)}
-                    :triggered-by event
-                    :topic        topic}))
+     (let [account (tcustomer/account (tpayment/customer payment))]
+       (event/create key
+                     {:params       {:account-id (td/id account)
+                                     :payment-id (tpayment/id payment)}
+                      :triggered-by event
+                      :topic        topic})))
    [:report :notify]))
 
 
 (defmulti process-failed-charge
-  "Using the charge's type, produce a transaction to update any entities (if
-  any) that need to be updated in the db."
-  (fn [deps ent event]
-    (payment/payment-for2 (->db deps) ent)))
+  (fn [deps payment event]
+    (tpayment/type payment)))
 
 
 (defmethod process-failed-charge :default [deps _ event]
@@ -167,31 +166,20 @@
                {:uuid (event/uuid event)}))
 
 
-(defmethod process-failed-charge :payment.for/rent [deps payment event]
-  (concat
-   (notify-events ::notify.rent payment event)
-   [[:db/retract (td/id payment) :payment/paid-on (payment/paid-on payment)]]))
+(defmethod process-failed-charge :payment.type/rent [deps payment event]
+  (notify-events ::notify.rent payment event))
 
 
-(defmethod process-failed-charge :payment.for/deposit [deps payment event]
+(defmethod process-failed-charge :payment.type/deposit [deps payment event]
   (notify-events ::notify.deposit payment event))
 
 
-(defmethod process-failed-charge :payment.for/order [deps payment event]
+(defmethod process-failed-charge :payment.type/order [deps payment event]
   (notify-events ::notify.service payment event))
 
 
-(defn- invoice-charge? [stripe-event]
-  (-> stripe-event re/subject :invoice some?))
-
-
 (defmethod dispatch/stripe :stripe.event.charge/failed [deps event _]
-  (let [se  (common/fetch-event (->stripe deps) event)
-        sid (re/subject-id se)
-        py  (payment/by-charge-id (->db deps) sid)]
-    (assert (not (payment/failed? py)) "Payment has already failed; not processing.")
-    ;; don't bother processing charges that belong to invoices
-    (when-not (invoice-charge? se)
-      (conj
-       (process-failed-charge deps py event)
-       (payment/is-failed py)))))
+  (let [se      (common/fetch-event (->teller deps) event)
+        payment (tevent/handle-stripe-event (->teller deps) se)]
+    (when-not (some? (tpayment/subscription payment))
+      (process-failed-charge deps payment event))))
