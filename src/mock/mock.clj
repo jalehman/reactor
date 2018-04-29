@@ -6,7 +6,6 @@
             [mailer.core :as mailer]
             [reactor.services.community-safety :as cs]
             [reactor.services.slack :as slack]
-            [ribbon.core :as ribbon]
             [toolbelt.core :as tb]))
 
 ;; =============================================================================
@@ -88,14 +87,4 @@
     (send [this opts message]
       (let [c (a/chan 1)]
         (a/put! c message)
-        c))))
-
-
-(defn stripe [& [payload]]
-  (reify ribbon/RibbonRequest
-    (request [this conf]
-      (ribbon/request this conf {}))
-    (request [this conf params]
-      (let [c (a/chan 1)]
-        (a/put! c (or payload {:conf conf :params params}))
         c))))

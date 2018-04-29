@@ -1,12 +1,10 @@
 (ns reactor.deps
   (:require [clojure.spec.alpha :as s]
-            [ribbon.core :as ribbon]
             [reactor.services.community-safety :as cs]
             [mailer.core :as mailer]
             [reactor.config :as config :refer [config]]
             [reactor.services.slack :as slack]
             [teller.core :as teller]
-            [ribbon.core :as ribbon]
             [mock.mock :as mock]
             [toolbelt.core :as tb]))
 
@@ -36,12 +34,6 @@
   (if (some? channel)
     (slack/slack webhook-url username channel)
     (slack/slack webhook-url username)))
-
-
-(defn- stripe [{:keys [secret-key]}]
-  (if (some? secret-key)
-    (ribbon/stripe-connection secret-key)
-    (mock/stripe)))
 
 
 ;; =====================================
@@ -82,7 +74,6 @@
 (s/def ::mailer #(satisfies? mailer.core/Mailer %))
 (s/def ::community-safety #(satisfies? reactor.services.community-safety/ICommunitySafety %))
 (s/def ::slack #(satisfies? reactor.services.slack/ISlack %))
-(s/def ::stripe ribbon/conn?)
 (s/def ::teller teller/connection?)
 (s/def ::public-hostname string?)
 (s/def ::dashboard-hostname string?)
@@ -90,7 +81,6 @@
   (s/keys :req-un [::mailer
                    ::community-safety
                    ::slack
-                   ::stripe
                    ::teller
                    ::public-hostname
                    ::dashboard-hostname]))
@@ -103,7 +93,6 @@
    {:community-safety   (mock/community-safety)
     :mailer             (mock/mailer)
     :slack              (mock/slack)
-    :stripe             (mock/stripe)
     :teller             teller
     :public-hostname    "http://localhost:8080"
     :dashboard-hostname "http://localhost:8082"})
@@ -112,7 +101,6 @@
    {:community-safety   (community-safety (:community-safety config))
     :mailer             (mailer (:mailer config))
     :slack              (slack (:slack config))
-    :stripe             (stripe (:stripe config))
     :teller             teller
     :public-hostname    (:public-hostname config)
     :dashboard-hostname (:dashboard-hostname config)}))
