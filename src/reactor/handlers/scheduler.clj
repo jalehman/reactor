@@ -5,6 +5,7 @@
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
+            [teller.payment :as tpayment]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
             [toolbelt.datomic :as td]))
@@ -12,18 +13,6 @@
 ;; =============================================================================
 ;; Helpers
 ;; =============================================================================
-
-
-#_(defn days-from?
-  "Is the supplied `date` a number of `days` away from `from`? `from` defaults to
-  current time in 2-arity version."
-  ([date days]
-   (days-from? (java.util.Date.) date days))
-  ([from date days]
-   (let [from (c/to-date-time from)
-         date (c/to-date-time date)]
-     (and (t/within? (t/interval from (t/plus from (t/days days))) date)
-          (not (t/within? (t/interval from (t/plus from (t/days (dec days)))) date))))))
 
 
 (defn within-a-day?
@@ -45,16 +34,12 @@
 
 (defn- query-overdue-rent-payments
   "All overdue rent payments as of `now`."
-  [db now]
-  (d/q '[:find [?p ...]
-         :in $ ?now
-         :where
-         [?p :payment/due ?due]
-         [?p :payment/status :payment.status/due]
-         [?m :member-license/rent-payments ?p]
-         [?m :member-license/status :member-license.status/active]
-         [(.before ^java.util.Date ?due ?now)]]
-       db now))
+  [teller now]
+  (->> (tpayment/query teller {:payment-types [:payment.type/rent]
+                               :statuses      [:payment.status/due]})
+       (filter
+        (fn [payment]
+          (t/before? (c/to-date-time (tpayment/due payment)) (t/now))))))
 
 
 (defn- query-overdue-deposits
@@ -80,19 +65,14 @@
 
 (defn- rent-payments-due-in-days
   "Produce entity ids of all unpaid rent payments due in `days` from `now`."
-  [db now days]
-  (let [then  (c/to-date (t/plus (c/to-date-time now) (t/days days)))
-        start (date/beginning-of-day then)
-        end   (date/end-of-day then)]
-    (d/q '[:find [?p ...]
-           :in $ % ?start ?end
-           :where
-           [?p :payment/due ?due]
-           [?p :payment/status :payment.status/due]
-           [?m :member-license/rent-payments ?p]
-           [?m :member-license/status :member-license.status/active]
-           (within ?due ?start ?end)]
-         db within start end)))
+  [teller now days]
+  (let [now (c/to-date-time now)]
+    (->> (tpayment/query teller {:payment-types [:payment.type/rent]
+                                 :statuses      [:payment.status/due]})
+         (filter
+          (fn [payment]
+            (let [due (c/to-date-time (tpayment/due payment))]
+              (t/within? (t/interval now (t/plus now (t/days days))) due)))))))
 
 
 (defn- deposits-due-in-days
@@ -122,17 +102,17 @@
 (defn- daily-events
   "Produce a vector of all events that should be processed as of time `t`,
   triggered by `event`."
-  [db event t]
-  (let [payments (query-overdue-rent-payments db t)
-        deposits (query-overdue-deposits db t)]
+  [deps event t]
+  (let [payments (query-overdue-rent-payments (->teller deps) t)
+        deposits (query-overdue-deposits (->db deps) t)]
     (->> (cond-> []
            (not (empty? payments)) (conj (events/alert-all-unpaid-rent payments t))
            (not (empty? deposits)) (conj (events/alert-unpaid-deposits deposits t))
 
            true
            (concat
-            (map #(events/alert-payment-due % t) (rent-payments-due-in-days db t 1))
-            (map #(events/alert-deposit-due % t) (deposits-due-in-days db t 5))))
+            (map #(events/alert-payment-due % t) (rent-payments-due-in-days (->teller deps) t 1))
+            (map #(events/alert-deposit-due % t) (deposits-due-in-days (->db deps) t 5))))
          (map #(tb/assoc-when % :event/triggered-by (td/id event))))))
 
 
@@ -143,7 +123,7 @@
 
 (defmethod dispatch/job :scheduler/daily [deps event {as-of :as-of}]
   (assert (within-a-day? as-of) "stale job; not processing.")
-  (daily-events (->db deps) event as-of))
+  (daily-events deps event as-of))
 
 
 ;; =============================================================================
