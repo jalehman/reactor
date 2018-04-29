@@ -2,7 +2,6 @@
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
-            [blueprints.models.payment :as payment]
             [blueprints.models.security-deposit :as deposit]
             [clj-time.coerce :as c]
             [clj-time.core :as t]

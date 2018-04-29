@@ -2,7 +2,6 @@
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
             [blueprints.models.order :as order]
-            [blueprints.models.payment :as payment]
             [blueprints.models.security-deposit :as deposit]
             [blueprints.models.service :as service]
             [datomic.api :as d]
@@ -40,7 +39,7 @@
        (sm/fields
         (sm/field "Email" (account/email account) true)
         (sm/field "Payment" (if (deposit/partially-paid? deposit) "remainder" "initial") true)
-        (sm/field "Amount" (format "$%.2f" (payment/amount payment)) true)))))))
+        (sm/field "Amount" (format "$%.2f" (tpayment/amount payment)) true)))))))
 
 
 (defmethod dispatch/report ::notify.rent [deps event {:keys [account-id payment-id]}]

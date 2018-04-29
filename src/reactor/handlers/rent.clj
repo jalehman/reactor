@@ -2,7 +2,6 @@
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
-            [blueprints.models.payment :as payment]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
             [datomic.api :as d]
@@ -155,9 +154,9 @@
 
 
 (defn- payment-period [payment tz]
-  (str (date/short-date (date/from-tz-date (payment/period-start payment) tz))
+  (str (date/short (date/tz-uncorrected (tpayment/period-start payment) tz))
        "-"
-       (date/short-date (date/from-tz-date (payment/period-end payment) tz))))
+       (date/short (date/tz-uncorrected (tpayment/period-end payment) tz))))
 
 
 ;; =====================================
@@ -165,10 +164,10 @@
 
 
 (defn- fmt-payment [db i payment]
-  (let [account      (payment/account payment)
+  (let [account      (-> payment tpayment/customer tcustomer/account)
         tz           (member-license/time-zone (member-license/by-account db account))
         days-overdue (t/in-days (t/interval
-                                 (date/from-tz-date-time (c/to-date-time (payment/period-start payment)) tz)
+                                 (date/tz-uncorrected-dt (c/to-date-time (tpayment/period-start payment)) tz)
                                  (t/now)))]
     (format "%s. %s's (_%s_) rent for `%s` is overdue by *%s days* (_due %s_), and late fees will be assessed."
             (inc i)
@@ -176,12 +175,13 @@
             (account/email account)
             (payment-period payment tz)
             days-overdue
-            (-> payment payment/due (date/from-tz-date tz) date/short-date-time))))
+            (-> payment tpayment/due (date/tz-uncorrected tz) (date/short true)))))
 
 
 (defmethod dispatch/report :rent-payments/alert-unpaid
   [deps event {:keys [payment-ids as-of]}]
-  (let [payments (apply td/entities (->db deps) payment-ids)]
+  (let [payments (->> (apply td/entities (->db deps) payment-ids)
+                      (map (partial tpayment/by-entity (->teller deps))))]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -191,7 +191,7 @@
        (sm/title "The following rent payments are overdue:")
        (sm/pretext "_I've gone ahead and notified each member of his/her late payment; this is just FYI._")
        (sm/text (->> payments
-                     (sort-by payment/due)
+                     (sort-by tpayment/due)
                      (map-indexed (partial fmt-payment (->db deps)))
                      (interpose "\n")
                      (apply str))))))))
@@ -202,14 +202,14 @@
 
 
 (defn- rent-overdue-body [db payment hostname]
-  (let [account (payment/account payment)
+  (let [account (-> payment tpayment/customer tcustomer/account)
         tz      (member-license/time-zone (member-license/by-account db account))]
     (mm/msg
-     (mm/greet (-> payment payment/account account/first-name))
+     (mm/greet (account/first-name account))
      (mm/p
       (format "I hope all is well. I wanted to check in because your <b>rent for %s is now overdue and past the grace period</b> (the grace period ended on %s). Please <a href='%s/login'>log in to your account</a> to pay your balance at your earliest opportunity."
               (payment-period payment tz)
-              (date/short-date-time (date/from-tz-date (payment/due payment) tz))
+              (date/short (date/tz-uncorrected (tpayment/due payment) tz) true)
               hostname))
      (mm/p "While you're there, I'd highly encourage you to enroll in <b>Autopay</b> so you don't have to worry about missing due dates and having late fees assessed in the future.")
      (mm/p "If you're having trouble remitting payment, please let us know so we can figure out how best to accommodate you.")
@@ -218,10 +218,10 @@
 
 (defmethod dispatch/notify :rent-payments/alert-unpaid
   [deps event {:keys [payment-id]}]
-  (let [payment (d/entity (->db deps) payment-id)]
+  (let [payment (tpayment/by-id (->teller deps) payment-id)]
     (mailer/send
      (->mailer deps)
-     (account/email (payment/account payment))
+     (-> payment tpayment/customer tcustomer/account account/email)
      (mail/subject "Your Rent is Overdue")
      (rent-overdue-body (->db deps) payment (->public-hostname deps))
      {:uuid (event/uuid event)
@@ -232,18 +232,15 @@
 ;; Dispatch report/notify events
 
 
-(defn- rent-payment? [db payment]
-  (= (payment/payment-for2 db payment) :payment.for/rent))
-
-
 (defmethod dispatch/job :rent-payments/alert-unpaid
   [deps event {:keys [payment-ids as-of] :as params}]
-  (let [payments (apply td/entities (->db deps) payment-ids)]
-    (assert (every? (partial rent-payment? (->db deps)) payments)
+  (let [payments (->> (apply td/entities (->db deps) payment-ids)
+                      (map (partial tpayment/by-entity (->teller deps))))]
+    (assert (every? tpayment/rent? payments)
             "All payments must be rent payments; not processing.")
     (conj
      ;; notify each member
-     (map #(event/notify (event/key event) {:params       {:payment-id (td/id %)}
+     (map #(event/notify (event/key event) {:params       {:payment-id (tpayment/id %)}
                                             :triggered-by event})
           payments)
      (event/report (event/key event) {:params       params
