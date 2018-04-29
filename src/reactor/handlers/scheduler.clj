@@ -106,12 +106,13 @@
   (let [payments (query-overdue-rent-payments (->teller deps) t)
         deposits (query-overdue-deposits (->db deps) t)]
     (->> (cond-> []
-           (not (empty? payments)) (conj (events/alert-all-unpaid-rent payments t))
-           (not (empty? deposits)) (conj (events/alert-unpaid-deposits deposits t))
+           (seq payments) (conj (events/alert-all-unpaid-rent (map td/id payments) t))
+           (seq deposits) (conj (events/alert-unpaid-deposits deposits t))
 
            true
            (concat
-            (map #(events/alert-payment-due % t) (rent-payments-due-in-days (->teller deps) t 1))
+            (map (comp #(events/alert-payment-due % t) td/id)
+                 (rent-payments-due-in-days (->teller deps) t 1))
             (map #(events/alert-deposit-due % t) (deposits-due-in-days (->db deps) t 5))))
          (map #(tb/assoc-when % :event/triggered-by (td/id event))))))
 
@@ -124,79 +125,3 @@
 (defmethod dispatch/job :scheduler/daily [deps event {as-of :as-of}]
   (assert (within-a-day? as-of) "stale job; not processing.")
   (daily-events deps event as-of))
-
-
-;; =============================================================================
-;; Playground
-;; =============================================================================
-
-
-(comment
-
-  (let [t (java.util.Date.)]
-    (when-let [deposits (unless-empty (query-overdue-deposits (d/db conn) t))]
-      (d/transact-async conn [(events/alert-unpaid-deposits [(first deposits)] t)])))
-
-
-  (let [t (java.util.Date.)]
-    (when-let [payments (unless-empty (query-overdue-rent-payments (d/db conn) t))]
-      (d/transact-async conn [(events/alert-all-unpaid-rent [(first payments)] t)])))
-
-
-  (daily-events (d/db conn) {} (java.util.Date.))
-
-
-  @(d/transact conn [(events/process-daily-tasks (java.util.Date.))])
-
-
-  ;; make some rent payments overdue
-  (->> (d/q '[:find ?p ?due
-              :where
-              [?p :payment/account _]
-              [?p :payment/due ?due]]
-            (d/db conn))
-       (map (fn [[payment due]]
-              [:db/add payment :payment/due (c/to-date (t/minus (c/from-date due) (t/days (rand-int 15))))]))
-       (d/transact conn)
-       deref)
-
-
-  ;; make some rent payments due tomorrow
-  (->> (d/q '[:find [?p ...]
-              :where
-              [?p :payment/account _]]
-            (d/db conn))
-       (map (fn [payment]
-              [:db/add payment :payment/due (c/to-date (t/plus (t/now) (t/days (rand-int 3))))]))
-       (d/transact conn)
-       deref)
-
-
-  ;; make some deposits overdue
-  (->> (d/q '[:find ?d ?due
-              :where
-              [?d :deposit/account _]
-              [?d :deposit/due ?due]]
-            (d/db conn))
-       (map (fn [[deposit due]]
-              [:db/add deposit :deposit/due (c/to-date (t/minus (c/from-date due) (t/days (rand-int 60))))]))
-       (d/transact conn)
-       deref)
-
-
-  ;; make some deposits due in five days
-  (->> (d/q '[:find [?d ...]
-              :where
-              [?d :deposit/account _]
-              [?d :deposit/due ?due]]
-            (d/db conn))
-       (map (fn [deposit]
-              [:db/add deposit :deposit/due (c/to-date (t/plus (t/now) (t/days (rand-nth (range 4 7)))))]))
-       (d/transact conn)
-       deref)
-
-
-  (require '[reactor.datomic :refer [conn]])
-
-
-  )

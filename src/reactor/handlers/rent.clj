@@ -13,12 +13,12 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
-            [teller.property :as tproperty]
-            [toolbelt.date :as date]
-            [toolbelt.datomic :as td]
-            [teller.payment :as tpayment]
             [teller.customer :as tcustomer]
-            [teller.subscription :as tsubscription]))
+            [teller.payment :as tpayment]
+            [teller.property :as tproperty]
+            [teller.subscription :as tsubscription]
+            [toolbelt.date :as date]
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Create Payment

@@ -52,7 +52,7 @@
 (defmethod dispatch/report :deposit.remainder/payment-made
   [deps event {:keys [account-id payment-id]}]
   (let [account (d/entity (->db deps) account-id)
-        payment (tpayment/by-id (->teller deps) charge)]
+        payment (tpayment/by-id (->teller deps) payment-id)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)

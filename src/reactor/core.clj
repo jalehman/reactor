@@ -53,7 +53,6 @@
    :slack              {:webhook-url (config/slack-webhook-url config)
                         :username    (config/slack-username config)}
    :community-safety   {:api-key (config/community-safety-api-key config)}
-   :stripe             {:secret-key (config/stripe-secret-key config)}
    :public-hostname    (config/public-hostname config)
    :dashboard-hostname (config/dashboard-hostname config)})
 
@@ -66,7 +65,6 @@
    :slack              {:webhook-url (config/slack-webhook-url config)
                         :username    (config/slack-username config)
                         :channel     "#debug"}
-   :stripe             {:secret-key (config/stripe-secret-key config)}
    :public-hostname    (config/public-hostname config)
    :dashboard-hostname (config/dashboard-hostname config)})
 
