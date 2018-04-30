@@ -10,6 +10,7 @@
             [reactor.datomic :refer [conn]]
             [reactor.reactor :as reactor]
             [reactor.scheduler]
+            [reactor.teller :refer [teller]]
             [taoensso.timbre :as timbre]))
 
 ;; =============================================================================
@@ -52,7 +53,6 @@
    :slack              {:webhook-url (config/slack-webhook-url config)
                         :username    (config/slack-username config)}
    :community-safety   {:api-key (config/community-safety-api-key config)}
-   :stripe             {:secret-key (config/stripe-secret-key config)}
    :public-hostname    (config/public-hostname config)
    :dashboard-hostname (config/dashboard-hostname config)})
 
@@ -65,7 +65,6 @@
    :slack              {:webhook-url (config/slack-webhook-url config)
                         :username    (config/slack-username config)
                         :channel     "#debug"}
-   :stripe             {:secret-key (config/stripe-secret-key config)}
    :public-hostname    (config/public-hostname config)
    :dashboard-hostname (config/dashboard-hostname config)})
 
@@ -75,7 +74,7 @@
                       (prod-config config)
                       (dev-config config))
                chan (a/chan (a/sliding-buffer (config/tx-report-buffer-size config)))]
-           (reactor/start! conn chan conf))
+           (reactor/start! conn teller chan conf))
   :stop (reactor/stop! reactor))
 
 

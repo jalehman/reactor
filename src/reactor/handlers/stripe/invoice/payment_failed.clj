@@ -1,9 +1,7 @@
 (ns reactor.handlers.stripe.invoice.payment-failed
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
-            [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
-            [blueprints.models.payment :as payment]
             [blueprints.models.service :as service]
             [datomic.api :as d]
             [mailer.core :as mailer]
@@ -15,17 +13,20 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
-            [ribbon.event :as re]
-            [taoensso.timbre :as timbre]))
+            [taoensso.timbre :as timbre]
+            [teller.customer :as tcustomer]
+            [teller.event :as tevent]
+            [teller.payment :as tpayment]
+            [teller.subscription :as tsubscription]
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Notify
 ;; =============================================================================
 
 
-(defmethod dispatch/notify ::notify.rent [deps event {:keys [member-license-id]}]
-  (let [license (d/entity (->db deps) member-license-id)
-        account (member-license/account license)]
+(defmethod dispatch/notify ::notify.rent [deps event {:keys [account-id]}]
+  (let [account (d/entity (->db deps) account-id)]
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -39,8 +40,8 @@
       :from mail/from-accounting})))
 
 
-(defmethod dispatch/notify ::notify.service [deps event {:keys [invoice]}]
-  (let [payment (payment/by-invoice-id (->db deps) invoice)
+(defmethod dispatch/notify ::notify.service [deps event {:keys [payment-id]}]
+  (let [payment (tpayment/by-id (->teller deps) payment-id)
         order   (order/by-payment (->db deps) payment)
         service (order/service order)
         account (order/account order)]
@@ -51,15 +52,15 @@
      (mm/msg
       (mm/greet (account/first-name account))
       (mm/p (format "Unfortunately, your recurring payment of $%.2f for <b>%s</b> has failed."
-                    (order/computed-price order) (service/desc service)))
+                    (tpayment/amount payment) (service/desc service)))
       (mm/p "We'll try the payment again within the next couple of days; in the meantime, please ensure that your payment source has sufficient funds.")
       mail/accounting-sig)
      {:uuid (event/uuid event)
       :from mail/from-accounting})))
 
 
-(defmethod dispatch/notify ::notify.service.final [deps event {:keys [invoice]}]
-  (let [payment (payment/by-invoice-id (->db deps) invoice)
+(defmethod dispatch/notify ::notify.service.final [deps event {:keys [payment-id]}]
+  (let [payment (tpayment/by-id (->teller deps) payment-id)
         order   (order/by-payment (->db deps) payment)
         service (order/service order)
         account (order/account order)]
@@ -82,23 +83,20 @@
 ;; =============================================================================
 
 
-(defmethod dispatch/report ::notify.rent [deps event {:keys [invoice]}]
-  (let [payment (payment/by-invoice-id (->db deps) invoice)
-        license (member-license/by-invoice-id (->db deps) invoice)
-        account (member-license/account license)
-        managed (member-license/rent-connect-id license)]
+(defmethod dispatch/report ::notify.rent [deps event {:keys [account-id]}]
+  (let [account (d/entity (->db deps) account-id)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
       :channel slack/ops}
      (sm/msg
       (sm/failure
-       (sm/title "Failed Rent Invoice" (ic/invoice-dashboard-url managed invoice))
+       (sm/title "Failed Rent Invoice")
        (sm/text (format "%s's autopay payment has failed" (account/full-name account))))))))
 
 
-(defmethod dispatch/report ::notify.service [deps event {:keys [invoice]}]
-  (let [payment (payment/by-invoice-id (->db deps) invoice)
+(defmethod dispatch/report ::notify.service [deps event {:keys [payment-id]}]
+  (let [payment (tpayment/by-id (->teller deps) payment-id)
         order   (order/by-payment (->db deps) payment)
         service (order/service order)
         account (order/account order)]
@@ -108,16 +106,16 @@
       :channel slack/ops}
      (sm/msg
       (sm/failure
-       (sm/title "Failed Service Invoice" (ic/invoice-dashboard-url invoice))
+       (sm/title "Failed Service Invoice")
        (sm/text (format "%s's service payment has failed." (account/full-name account)))
        (sm/fields
         (sm/field "Account" (account/email account) true)
         (sm/field "Service" (service/desc service) true)
-        (sm/field "Amount" (order/computed-price order) true)))))))
+        (sm/field "Amount" (tpayment/amount payment) true)))))))
 
 
-(defmethod dispatch/report ::notify.service.final [deps event {:keys [invoice]}]
-  (let [payment (payment/by-invoice-id (->db deps) invoice)
+(defmethod dispatch/report ::notify.service.final [deps event {:keys [payment-id]}]
+  (let [payment (tpayment/by-id (->teller deps) payment-id)
         order   (order/by-payment (->db deps) payment)
         service (order/service order)
         account (order/account order)]
@@ -127,13 +125,13 @@
       :channel slack/ops}
      (sm/msg
       (sm/failure
-       (sm/title "Final Failed Service Invoice" (ic/invoice-dashboard-url invoice))
+       (sm/title "Final Failed Service Invoice")
        (sm/text (format "%s's service payment has failed, and no subsequent attempts will be made. Please coordinate next steps with the customer."
                         (account/full-name account)))
        (sm/fields
         (sm/field "Account" (account/email account) true)
         (sm/field "Service" (service/desc service) true)
-        (sm/field "Amount" (order/computed-price order) true)))))))
+        (sm/field "Amount" (tpayment/amount payment) true)))))))
 
 
 ;; =============================================================================
@@ -141,63 +139,44 @@
 ;; =============================================================================
 
 
-(def ^:private max-payment-attempts 3)
-
-
 (defmulti payment-failed ic/invoice-dispatch)
 
 
-(defmethod payment-failed :default [_ event stripe-event]
+(defmethod payment-failed :default [_ event payment]
   (timbre/warn :stripe.event.invoice.payment-failed/unknown
                {:uuid         (event/uuid event)
-                :invoice      (re/subject-id stripe-event)
-                :subscription (ic/subs-id stripe-event)}))
+                :payment      (tpayment/id payment)
+                :subscription (-> payment tpayment/subscription tsubscription/id)}))
 
 
-(defn- max-attempts-exceeded? [stripe-event]
-  (let [attempt-count (:attempt_count (re/subject stripe-event))]
-    (>= attempt-count max-payment-attempts)))
+(defmethod payment-failed :payment.type/rent [deps event payment]
+  (let [account (-> payment tpayment/customer tcustomer/account)]
+    (mapv
+     (fn [topic]
+       (let [params {:account-id (td/id account)
+                     :payment-id (tpayment/id payment)}]
+         (event/create ::notify.rent {:params       params
+                                      :triggered-by event
+                                      :topic        topic})))
+     [:notify :report])))
 
 
-(defn- autopay->normal-payment
-  "Remove autopay-specific attributes of the `payment`"
-  [payment]
-  [[:db/retract payment :payment/paid-on (payment/paid-on payment)]
-   [:db/retract payment :stripe/invoice-id (payment/invoice-id payment)]
-   [:db/add payment :payment/status :payment.status/failed]])
-
-
-(defmethod payment-failed :rent [deps event stripe-event]
-  (let [invoice-id (re/subject-id stripe-event)
-        payment    (payment/by-invoice-id (->db deps) invoice-id)
-        license    (member-license/by-invoice-id (->db deps) invoice-id)]
-    (if (max-attempts-exceeded? stripe-event)
-      (autopay->normal-payment payment)
-      (mapv
-       (fn [topic]
-         (let [params {:member-license-id (:db/id license)
-                       :invoice           (re/subject-id stripe-event)}]
-           (event/create ::notify.rent {:params       params
-                                        :triggered-by event
-                                        :topic        topic})))
-       [:notify :report]))))
-
-
-(defmethod payment-failed :service [deps event stripe-event]
-  (let [payment (payment/by-invoice-id (->db deps) (re/subject-id stripe-event))]
-    (-> (mapv
-         (fn [topic]
-           (let [params {:invoice (re/subject-id stripe-event)}
-                 key    (if (max-attempts-exceeded? stripe-event)
-                          ::notify.service.final ::notify.service)]
-             (event/create key {:params       params
-                                :triggered-by event
-                                :topic        topic})))
-         [:notify :report])
-        (conj (payment/is-failed payment)))))
+(defmethod payment-failed :payment.type/order [deps event payment]
+  (let [account (-> payment tpayment/customer tcustomer/account)]
+    (mapv
+     (fn [topic]
+       (let [params {:account-id (td/id account)
+                     :payment-id (tpayment/id payment)}
+             key    (if (tpayment/failed? payment)
+                      ::notify.service.final ::notify.service)]
+         (event/create key {:params       params
+                            :triggered-by event
+                            :topic        topic})))
+     [:notify :report])))
 
 
 (defmethod dispatch/stripe :stripe.event.invoice/payment-failed
   [deps event stripe-event]
-  (let [stripe-event (common/fetch-event (->stripe deps) event)]
-    (payment-failed deps event stripe-event)))
+  (let [se      (common/fetch-event (->teller deps) event)
+        payment (tevent/handle-stripe-event (->teller deps) se)]
+    (payment-failed deps event payment)))

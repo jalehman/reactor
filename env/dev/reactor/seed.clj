@@ -2,29 +2,17 @@
   (:require [blueprints.models.license :as license]
             [blueprints.seed.accounts :as accounts]
             [datomic.api :as d]
-            [toolbelt.core :as tb]
-            [io.rkn.conformity :as cf]))
+            [io.rkn.conformity :as cf]
+            [toolbelt.core :as tb]))
 
 (defn- rand-unit [property]
   (-> property :property/units vec rand-nth :db/id))
 
 
-(defn distinct-by
-  "Returns elements of xs which return unique values according to f. If multiple
-  elements of xs return the same value under f, the first is returned"
-  [f xs]
-  (let [s (atom #{})]
-    (for [x     xs
-          :let  [id (f x)]
-          :when (not (contains? @s id))]
-      (do (swap! s conj id)
-          x))))
-
-
 (defn- accounts [db]
   (let [license    (license/by-term db 3)
         property   (d/entity db [:property/internal-name "2072mission"])
-        distinct   (fn [coll] (distinct-by (comp :account/email #(tb/find-by :account/email %)) coll))
+        distinct   (fn [coll] (tb/distinct-by (comp :account/email #(tb/find-by :account/email %)) coll))
         members    (->> (range 13)
                         (map (fn [_] (accounts/member (rand-unit property) (:db/id license))))
                         distinct

@@ -27,7 +27,7 @@
 (defn ->slack [deps] (:slack deps))
 
 
-(defn ->stripe [deps] (:stripe deps))
+(defn ->teller [deps] (:teller deps))
 
 
 ;; =============================================================================

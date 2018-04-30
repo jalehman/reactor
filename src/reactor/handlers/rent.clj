@@ -2,7 +2,6 @@
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
             [blueprints.models.member-license :as member-license]
-            [blueprints.models.payment :as payment]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
             [datomic.api :as d]
@@ -13,6 +12,10 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
+            [teller.customer :as tcustomer]
+            [teller.payment :as tpayment]
+            [teller.property :as tproperty]
+            [teller.subscription :as tsubscription]
             [toolbelt.date :as date]
             [toolbelt.datomic :as td]))
 
@@ -57,22 +60,21 @@
 
 (defmethod dispatch/job :rent-payment/create
   [deps event {:keys [start end amount member-license-id] :as params}]
-  (let [license  (d/entity (->db deps) member-license-id)
-        account  (member-license/account license)
-        property (account/current-property (->db deps) account)
-        payment  (payment/create amount account
-                                 :pstart start
-                                 :pend end
-                                 :due (due-date start (member-license/time-zone license))
-                                 :status :payment.status/due
-                                 :property property
-                                 :for :payment.for/rent)]
+  (let [license   (d/entity (->db deps) member-license-id)
+        account   (member-license/account license)
+        community (account/current-property (->db deps) account)
+        property  (tproperty/by-community (->teller deps) community)
+        customer  (tcustomer/by-account (->teller deps) account)
+        due       (due-date start (member-license/time-zone license))
+        payment   (tpayment/create! customer amount :payment.type/rent
+                                    {:property property
+                                     :due      due
+                                     :status   :payment.status/due
+                                     :period   [start end]})]
     [(event/notify :rent-payment/create
                    {:params       {:member-license-id member-license-id
                                    :amount            amount}
-                    :triggered-by event})
-     {:db/id                        member-license-id
-      :member-license/rent-payments payment}]))
+                    :triggered-by event})]))
 
 
 ;; =============================================================================
@@ -86,7 +88,7 @@
 
 
 (defn active-licenses
-  "Query all active licenses that are not on autopay that have not yet commenced."
+  "Query all active licenses that have not yet commenced."
   [db period]
   (d/q '[:find ?l ?p
          :in $ ?period
@@ -96,24 +98,42 @@
          [?l :member-license/unit ?u]
          [?l :member-license/price ?p]
          [?l :member-license/commencement ?c]
-         ;; not on autopay
-         [(missing? $ ?l :member-license/subscription-id)]
          ;; license has commenced
-         [(.before ^java.util.Date ?c ?period)] ; now is after commencement
-         ]
+         [(.before ^java.util.Date ?c ?period)]]
        db period))
 
 
+(defn- on-autopay?
+  [teller customer]
+  (seq (tsubscription/query teller {:customers     [customer]
+                                    :payment-types [:payment.type/rent]})))
+
+
+(defn- should-create-rent-payment?
+  [teller customer from]
+  (let [from (c/to-date-time from)]
+    (and
+     (not (on-autopay? teller customer))
+     (empty?
+      (tpayment/query teller {:customers     [customer]
+                              :payment-types [:payment.type/rent]
+                              :from          (c/to-date (t/minus from (t/days 1)))
+                              :to            (c/to-date (t/plus from (t/days 1)))
+                              :datekey       :payment/pstart})))))
+
+
 (defn create-payment-events
-  [db event period]
-  (let [actives (active-licenses db period)]
+  [deps event period]
+  (let [actives (active-licenses (->db deps) period)]
     (->> (mapv
           (fn [[member-license-id amount]]
-            (let [ml    (d/entity db member-license-id)
-                  tz    (member-license/time-zone ml)
-                  start (date/beginning-of-day period tz)
-                  end   (date/end-of-month start tz)]
-              (when (empty? (member-license/payment-within db ml period))
+            (let [ml       (d/entity (->db deps) member-license-id)
+                  account  (member-license/account ml)
+                  customer (tcustomer/by-account (->teller deps) account)
+                  tz       (member-license/time-zone ml)
+                  start    (date/beginning-of-day period tz)
+                  end      (date/end-of-month start tz)]
+              (when (should-create-rent-payment? (->teller deps) customer start)
                 (event/job :rent-payment/create {:params       {:start             start
                                                                 :end               end
                                                                 :amount            amount
@@ -125,7 +145,7 @@
 
 (defmethod dispatch/job :rent-payments/create-all [deps event params]
   (assert (:period params) "The time period to create payments for must be supplied!")
-  (create-payment-events (->db deps) event (:period params)))
+  (create-payment-events deps event (:period params)))
 
 
 ;; =============================================================================
@@ -134,9 +154,9 @@
 
 
 (defn- payment-period [payment tz]
-  (str (date/short-date (date/from-tz-date (payment/period-start payment) tz))
+  (str (date/short (date/tz-uncorrected (tpayment/period-start payment) tz))
        "-"
-       (date/short-date (date/from-tz-date (payment/period-end payment) tz))))
+       (date/short (date/tz-uncorrected (tpayment/period-end payment) tz))))
 
 
 ;; =====================================
@@ -144,10 +164,10 @@
 
 
 (defn- fmt-payment [db i payment]
-  (let [account      (payment/account payment)
+  (let [account      (-> payment tpayment/customer tcustomer/account)
         tz           (member-license/time-zone (member-license/by-account db account))
         days-overdue (t/in-days (t/interval
-                                 (date/from-tz-date-time (c/to-date-time (payment/period-start payment)) tz)
+                                 (date/tz-uncorrected-dt (c/to-date-time (tpayment/period-start payment)) tz)
                                  (t/now)))]
     (format "%s. %s's (_%s_) rent for `%s` is overdue by *%s days* (_due %s_), and late fees will be assessed."
             (inc i)
@@ -155,12 +175,13 @@
             (account/email account)
             (payment-period payment tz)
             days-overdue
-            (-> payment payment/due (date/from-tz-date tz) date/short-date-time))))
+            (-> payment tpayment/due (date/tz-uncorrected tz) (date/short true)))))
 
 
 (defmethod dispatch/report :rent-payments/alert-unpaid
   [deps event {:keys [payment-ids as-of]}]
-  (let [payments (apply td/entities (->db deps) payment-ids)]
+  (let [payments (->> (apply td/entities (->db deps) payment-ids)
+                      (map (partial tpayment/by-entity (->teller deps))))]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -170,7 +191,7 @@
        (sm/title "The following rent payments are overdue:")
        (sm/pretext "_I've gone ahead and notified each member of his/her late payment; this is just FYI._")
        (sm/text (->> payments
-                     (sort-by payment/due)
+                     (sort-by tpayment/due)
                      (map-indexed (partial fmt-payment (->db deps)))
                      (interpose "\n")
                      (apply str))))))))
@@ -181,14 +202,14 @@
 
 
 (defn- rent-overdue-body [db payment hostname]
-  (let [account (payment/account payment)
+  (let [account (-> payment tpayment/customer tcustomer/account)
         tz      (member-license/time-zone (member-license/by-account db account))]
     (mm/msg
-     (mm/greet (-> payment payment/account account/first-name))
+     (mm/greet (account/first-name account))
      (mm/p
       (format "I hope all is well. I wanted to check in because your <b>rent for %s is now overdue and past the grace period</b> (the grace period ended on %s). Please <a href='%s/login'>log in to your account</a> to pay your balance at your earliest opportunity."
               (payment-period payment tz)
-              (date/short-date-time (date/from-tz-date (payment/due payment) tz))
+              (date/short (date/tz-uncorrected (tpayment/due payment) tz) true)
               hostname))
      (mm/p "While you're there, I'd highly encourage you to enroll in <b>Autopay</b> so you don't have to worry about missing due dates and having late fees assessed in the future.")
      (mm/p "If you're having trouble remitting payment, please let us know so we can figure out how best to accommodate you.")
@@ -197,10 +218,10 @@
 
 (defmethod dispatch/notify :rent-payments/alert-unpaid
   [deps event {:keys [payment-id]}]
-  (let [payment (d/entity (->db deps) payment-id)]
+  (let [payment (tpayment/by-id (->teller deps) payment-id)]
     (mailer/send
      (->mailer deps)
-     (account/email (payment/account payment))
+     (-> payment tpayment/customer tcustomer/account account/email)
      (mail/subject "Your Rent is Overdue")
      (rent-overdue-body (->db deps) payment (->public-hostname deps))
      {:uuid (event/uuid event)
@@ -211,18 +232,15 @@
 ;; Dispatch report/notify events
 
 
-(defn- rent-payment? [db payment]
-  (= (payment/payment-for2 db payment) :payment.for/rent))
-
-
 (defmethod dispatch/job :rent-payments/alert-unpaid
   [deps event {:keys [payment-ids as-of] :as params}]
-  (let [payments (apply td/entities (->db deps) payment-ids)]
-    (assert (every? (partial rent-payment? (->db deps)) payments)
+  (let [payments (->> (apply td/entities (->db deps) payment-ids)
+                      (map (partial tpayment/by-entity (->teller deps))))]
+    (assert (every? tpayment/rent? payments)
             "All payments must be rent payments; not processing.")
     (conj
      ;; notify each member
-     (map #(event/notify (event/key event) {:params       {:payment-id (td/id %)}
+     (map #(event/notify (event/key event) {:params       {:payment-id (tpayment/id %)}
                                             :triggered-by event})
           payments)
      (event/report (event/key event) {:params       params
@@ -234,31 +252,29 @@
 ;; =============================================================================
 
 
-;; it may make sense to move this to a `payment` namespace when we're dealing
-;; with multiple kinds of payments.
-
 (defn- payment-due-soon-body [deps payment as-of]
   (let [tz  (->> payment
-                 payment/account
-                 (member-license/active (->db deps))
-                 member-license/time-zone)
-        due (date/from-tz-date (payment/due payment) tz)]
+                 tpayment/property
+                 tproperty/timezone
+                 t/time-zone-for-id)
+        due (date/tz-uncorrected (tpayment/due payment) tz)]
     (mm/msg
-     (mm/greet (-> payment payment/account account/first-name))
+     (mm/greet (-> payment tpayment/customer tcustomer/account account/first-name))
      (mm/p
-      (format "This is a friendly reminder to let you know that your rent payment of $%.2f <b>must be made by %s</b> to avoid late fees." (payment/amount payment) (date/short-date-time due)))
+      (format "This is a friendly reminder to let you know that your rent payment of $%.2f <b>must be made by %s</b> to avoid late fees."
+              (tpayment/amount payment) (date/short due true)))
      (mm/p
       (format "Please <a href='%s/login'>log in to your account</a> to pay your rent as soon as possible." (->public-hostname deps)))
      mail/accounting-sig)))
 
 
 (defmethod dispatch/notify :payment/due [deps event {:keys [payment-id as-of]}]
-  (let [payment (d/entity (->db deps) payment-id)]
-    (assert (= (payment/payment-for2 (->db deps) payment) :payment.for/rent)
+  (let [payment (tpayment/by-id (->teller deps) (d/entity (->db deps) payment-id))]
+    (assert (tpayment/rent? payment)
             "Can only work with rent payments; not processing.")
     (mailer/send
      (->mailer deps)
-     (account/email (payment/account payment))
+     (-> payment tpayment/customer tcustomer/account account/email)
      "Starcity: Your Rent is Due Soon"
      (payment-due-soon-body deps payment as-of)
      {:uuid (event/uuid event)
