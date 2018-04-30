@@ -123,7 +123,8 @@
   [deps event params]
   (let [se      (common/fetch-event (->teller deps) event)
         status  (:status se)
-        source  (tevent/handle-stripe-event (->teller deps) se)
+        source  (tsource/by-id (->teller deps) (:id (common/subject se)))
+        _       (tevent/handle-stripe-event (->teller deps) se)
         account (-> source tsource/customer tcustomer/account)]
     (when (tsource/bank-account? source)
       ((juxt event/report event/notify) (event/key event)
