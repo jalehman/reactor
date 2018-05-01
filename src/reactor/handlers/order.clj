@@ -43,17 +43,6 @@
   (format "%s/services/orders/%s" hostname (:db/id order)))
 
 
-(def ^:private property-channel
-  {"52gilbert"   "#52-gilbert"
-   "2072mission" "#2072-mission"
-   "6nottingham" "#6-nottingham"})
-
-
-(defn- notification-channel [db account]
-  (let [code (property/code (account/current-property db account))]
-    (get property-channel code slack/crm)))
-
-
 (defmethod dispatch/notify :order/created
   [deps event {:keys [order-uuid account-id]}]
   (let [order   (order/by-uuid (->db deps) order-uuid)
@@ -91,7 +80,7 @@
       (slack/send
        (->slack deps)
        {:uuid    (event/uuid event)
-        :channel (notification-channel (->db deps) member)}
+        :channel slack/helping-hands}
        (sm/msg
         (sm/info
          (sm/title "New Premium Service Order"
@@ -218,7 +207,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (notification-channel (->db deps) orderer)}
+      :channel slack/helping-hands}
      (sm/msg
       (sm/info
        (sm/title "Helping Hands Order Canceled"
