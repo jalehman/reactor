@@ -104,22 +104,68 @@
 
 
 (defn- on-autopay?
-  [teller customer]
-  (seq (tsubscription/query teller {:customers     [customer]
-                                    :payment-types [:payment.type/rent]})))
+  [teller account]
+  (when-let [customer (tcustomer/by-account teller account)]
+    (->> (tsubscription/query teller {:customers     [customer]
+                                      :payment-types [:payment.type/rent]})
+         (filter tsubscription/active?)
+         seq)))
+
+
+(defn- has-current-rent-payment?
+  [teller account from]
+  (when-let [customer (tcustomer/by-account teller account)]
+    (empty?
+     (tpayment/query teller {:customers     [customer]
+                             :payment-types [:payment.type/rent]
+                             :from          (c/to-date (t/minus from (t/days 1)))
+                             :to            (c/to-date (t/plus from (t/days 1)))
+                             :datekey       :payment/pstart}))))
 
 
 (defn- should-create-rent-payment?
-  [teller customer from]
+  [teller account from]
   (let [from (c/to-date-time from)]
     (and
-     (not (on-autopay? teller customer))
-     (empty?
-      (tpayment/query teller {:customers     [customer]
-                              :payment-types [:payment.type/rent]
-                              :from          (c/to-date (t/minus from (t/days 1)))
-                              :to            (c/to-date (t/plus from (t/days 1)))
-                              :datekey       :payment/pstart})))))
+     (not (on-autopay? teller account))
+     (has-current-rent-payment? teller account from))))
+
+
+(defn- payment-end-date
+  [license start]
+  (let [tz  (member-license/time-zone license)
+        end (date/end-of-month start tz)]
+    (if (t/within? (t/interval (c/to-date-time start) (c/to-date-time end))
+                   (c/to-date-time (member-license/ends license)))
+      (member-license/ends license)
+      end)))
+
+
+(defn- payment-amount
+  [license start end]
+  (let [tz (member-license/time-zone license)]
+    (if (= end (date/end-of-month start tz))
+      (member-license/rate license)
+      (*
+       ;; daily rate
+       (/ (member-license/rate license)
+          ;; number of days in month
+          (t/day (t/last-day-of-the-month (c/to-date-time start))))
+         ;; number of days between `start` and `end`
+       (inc (t/in-days
+             (t/interval (c/to-date-time start)
+                         (c/to-date-time end))))))))
+
+
+(defn- rent-payment-params
+  [license period]
+  (let [tz    (member-license/time-zone license)
+        start (date/beginning-of-day period tz)
+        end   (payment-end-date license start)]
+    {:start             start
+     :end               end
+     :amount            (payment-amount license start end)
+     :member-license-id (td/id license)}))
 
 
 (defn create-payment-events
@@ -127,17 +173,15 @@
   (let [actives (active-licenses (->db deps) period)]
     (->> (mapv
           (fn [[member-license-id amount]]
-            (let [ml       (d/entity (->db deps) member-license-id)
-                  account  (member-license/account ml)
-                  customer (tcustomer/by-account (->teller deps) account)
-                  tz       (member-license/time-zone ml)
-                  start    (date/beginning-of-day period tz)
-                  end      (date/end-of-month start tz)]
-              (when (should-create-rent-payment? (->teller deps) customer start)
-                (event/job :rent-payment/create {:params       {:start             start
-                                                                :end               end
-                                                                :amount            amount
-                                                                :member-license-id member-license-id}
+            (let [license (d/entity (->db deps) member-license-id)
+                  tz      (member-license/time-zone license)
+                  start   (date/beginning-of-day period tz)
+                  account (member-license/account license)]
+              (when (should-create-rent-payment? (->teller deps) account start)
+                (taoensso.timbre/info "creating payment for:"
+                                      (:account/email account)
+                                      (rent-payment-params license period))
+                (event/job :rent-payment/create {:params       (rent-payment-params license period)
                                                  :triggered-by event}))))
           actives)
          (remove nil?))))
