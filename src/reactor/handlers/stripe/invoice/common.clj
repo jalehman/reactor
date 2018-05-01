@@ -9,4 +9,4 @@
 
 (defn invoice-dispatch
   [deps event payment]
-  (tpayment/type (tpayment/subscription payment)))
+  (tpayment/type payment))
