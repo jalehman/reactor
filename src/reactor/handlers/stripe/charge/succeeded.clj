@@ -6,4 +6,5 @@
 
 (defmethod dispatch/stripe :stripe.event.charge/succeeded [deps event _]
   (let [se (common/fetch-event (->teller deps) event)]
-    (tevent/handle-stripe-event (->teller deps) se)))
+    (tevent/handle-stripe-event (->teller deps) se)
+    nil))
