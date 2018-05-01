@@ -1,11 +1,8 @@
 (ns reactor.handlers.stripe.invoice.created
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
-            [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
-            [blueprints.models.payment :as payment]
             [blueprints.models.service :as service]
-            [clj-time.coerce :as c]
             [clojure.spec.alpha :as s]
             [datomic.api :as d]
             [mailer.core :as mailer]
@@ -15,12 +12,12 @@
             [reactor.handlers.stripe.common :as common]
             [reactor.handlers.stripe.invoice.common :as ic]
             [reactor.utils.mail :as mail]
-            [ribbon.event :as re]
             [taoensso.timbre :as timbre]
+            [teller.customer :as tcustomer]
+            [teller.event :as tevent]
+            [teller.payment :as tpayment]
+            [teller.subscription :as tsubscription]
             [toolbelt.datomic :as td]))
-
-;; Invoices are created ~1 hour prior to the attempt to charge them. We use this
-;; event to ready the system for the charge.
 
 
 ;; =============================================================================
@@ -43,8 +40,8 @@
       :from mail/from-accounting})))
 
 
-(defmethod dispatch/notify ::notify.service [deps event {:keys [subs-id]}]
-  (let [order   (order/by-subscription-id (->db deps) subs-id)
+(defmethod dispatch/notify ::notify.service [deps event {:keys [order-id]}]
+  (let [order   (d/entity (->db deps) order-id)
         service (order/service order)
         account (order/account order)]
     (assert (some? (order/computed-price order)) "Order has no price; cannot send email.")
@@ -66,43 +63,28 @@
 ;; =============================================================================
 
 
-(defn period-start
-  "Produce the invoice's start date by inspecting the line items. The
-  `:period_start` date on the `event-data` has proven to be unreliable; hence
-  the use of the `:lines`."
-  [license event-data]
-  (-> event-data re/subject :lines :data first :period :start (* 1000) c/from-long c/to-date))
-
-
 (defmulti invoice-created ic/invoice-dispatch)
 
 
-(defmethod invoice-created :default [_ event stripe-event]
+(defmethod invoice-created :default [_ event payment]
   (timbre/warn :stripe.event.invoice.created/unknown
                {:uuid         (event/uuid event)
-                :invoice      (re/subject-id stripe-event)
-                :subscription (ic/subs-id stripe-event)}))
+                :invoice      (tpayment/invoice-id payment)
+                :subscription (-> payment
+                                  tpayment/subscription
+                                  tsubscription/id)}))
 
 
-(defmethod invoice-created :rent [deps event stripe-event]
-  (let [license (member-license/by-subscription-id (->db deps) (ic/subs-id stripe-event))
-        account (member-license/account license)
-        pstart  (period-start license stripe-event)
-        amount  (/ (:amount_due (re/subject stripe-event)) 100)
-        payment (payment/autopay license amount (re/subject-id stripe-event) pstart)]
-    [(member-license/add-rent-payments license payment)
-     (event/notify ::notify.rent {:params       {:account-id (td/id account)}
-                                  :triggered-by event})]))
+(defmethod invoice-created :payment.type/rent [deps event payment]
+  (let [account (-> payment tpayment/customer tcustomer/account)]
+    (event/notify ::notify.rent {:params       {:account-id (td/id account)}
+                                 :triggered-by event})))
 
 
-(defmethod invoice-created :service [deps event stripe-event]
-  (let [order   (order/by-subscription-id (->db deps) (ic/subs-id stripe-event))
-        payment (payment/create (order/computed-price order) (order/account order)
-                                :for :payment.for/order
-                                :invoice-id (re/subject-id stripe-event))]
+(defmethod invoice-created :payment.type/order [deps event payment]
+  (let [order (order/by-subscription (->db deps) (tpayment/subscription payment))]
     [(order/add-payment order payment)
-     payment
-     (event/notify ::notify.service {:params       {:subs-id (ic/subs-id stripe-event)}
+     (event/notify ::notify.service {:params       {:order-id (td/id order)}
                                      :triggered-by event})]))
 
 
@@ -111,7 +93,7 @@
   subscription?"
   [stripe-event]
   ;; closed upon creation means that no action needs to be taken
-  (:closed (re/subject stripe-event)))
+  (:closed (common/subject stripe-event)))
 
 (s/fdef first-invoice?
         :args (s/cat :stripe-event map?)
@@ -119,6 +101,7 @@
 
 
 (defmethod dispatch/stripe :stripe.event.invoice/created [deps event _]
-  (let [stripe-event (common/fetch-event (->stripe deps) event)]
-    (when-not (first-invoice? stripe-event)
-      (invoice-created deps event stripe-event))))
+  (let [se      (common/fetch-event (->teller deps) event)
+        payment (tevent/handle-stripe-event (->teller deps) se)]
+    (when-not (first-invoice? se)
+      (invoice-created deps event payment))))

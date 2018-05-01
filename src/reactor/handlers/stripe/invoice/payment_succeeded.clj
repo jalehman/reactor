@@ -1,8 +1,7 @@
 (ns reactor.handlers.stripe.invoice.payment-succeeded
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
-            [blueprints.models.member-license :as member-license]
-            [blueprints.models.payment :as payment]
+            [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
@@ -12,18 +11,21 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
-            [ribbon.event :as re]
-            [taoensso.timbre :as timbre]))
+            [taoensso.timbre :as timbre]
+            [teller.customer :as tcustomer]
+            [teller.event :as tevent]
+            [teller.payment :as tpayment]
+            [teller.subscription :as tsubscription]
+            [toolbelt.datomic :as td]))
 
 ;; =============================================================================
 ;; Notify
 ;; =============================================================================
 
 
-(defmethod dispatch/notify ::notify.rent [deps event {:keys [invoice]}]
-  (let [license (member-license/by-invoice-id (->db deps) invoice)
-        account (member-license/account license)
-        payment (payment/by-invoice-id (->db deps) invoice)]
+(defmethod dispatch/notify ::notify.rent [deps event {:keys [payment-id account-id]}]
+  (let [account (d/entity (->db deps) account-id)
+        payment (tpayment/by-id (->teller deps) payment-id)]
     (mailer/send
      (->mailer deps)
      (account/email account)
@@ -32,7 +34,7 @@
       (mm/greet (account/first-name account))
       (mm/p
        (format "This is a friendly reminder to let you know that your rent payment of $%.2f has been successfully paid."
-               (payment/amount payment)))
+               (tpayment/amount payment)))
       (mm/p "Thanks for using Autopay!")
       mail/accounting-sig)
      {:uuid (event/uuid event)
@@ -44,17 +46,15 @@
 ;; =============================================================================
 
 
-(defmethod dispatch/report ::notify.rent [deps event {:keys [invoice]}]
-  (let [license (member-license/by-invoice-id (->db deps) invoice)
-        account (member-license/account license)
-        managed (member-license/rent-connect-id license)]
+(defmethod dispatch/report ::notify.rent [deps event {:keys [account-id]}]
+  (let [account (d/entity (->db deps) account-id)]
     (slack/send
      (->slack deps)
      {:channel slack/ops
       :uuid    (event/uuid event)}
      (sm/msg
       (sm/success
-       (sm/title "View Invoice on Stripe" (ic/invoice-dashboard-url managed invoice))
+       (sm/title "Autopay Success")
        (sm/text (format "%s's autopay payment has succeeded!"
                         (account/full-name account))))))))
 
@@ -67,39 +67,27 @@
 (defmulti payment-succeeded ic/invoice-dispatch)
 
 
-(defmethod payment-succeeded :default [_ event stripe-event]
+(defmethod payment-succeeded :default [_ event payment]
   (timbre/warn :stripe.event.invoice.payment-succeeded/unknown
                {:uuid         (event/uuid event)
-                :invoice      (re/subject-id stripe-event)
-                :subscription (ic/subs-id stripe-event)}))
+                :payment      (tpayment/id payment)
+                :subscription (-> payment tpayment/subscription tsubscription/id)}))
 
 
-(defmethod payment-succeeded :rent [deps event stripe-event]
-  (let [payment (payment/by-invoice-id (->db deps) (re/subject-id stripe-event))]
-    (-> (mapv
-         (fn [topic]
-           (let [params {:invoice (re/subject-id stripe-event)}]
-             (event/create ::notify.rent {:params       params
-                                          :triggered-by event
-                                          :topic        topic})))
-         [:report :notify])
-        (conj (payment/is-paid payment)))))
-
-
-(defmethod payment-succeeded :service [deps event stripe-event]
-  (let [invoice-id (re/subject-id stripe-event)
-        payment    (payment/by-invoice-id (->db deps) invoice-id)]
-    ;; No notifications required at this time.
-    (payment/is-paid payment)))
-
-
-(defn- linked-invoice? [deps stripe-event]
-  (let [invoice (re/subject-id stripe-event)]
-    (some? (payment/by-invoice-id (->db deps) invoice))))
+(defmethod payment-succeeded :payment.type/rent [deps event payment]
+  (let [account (-> payment tpayment/customer tcustomer/account)]
+    (mapv
+     (fn [topic]
+       (let [params {:account-id (td/id account)
+                     :payment-id (tpayment/id payment)}]
+         (event/create ::notify.rent {:params       params
+                                      :triggered-by event
+                                      :topic        topic})))
+     [:report :notify])))
 
 
 (defmethod dispatch/stripe :stripe.event.invoice/payment-succeeded
   [deps event stripe-event]
-  (let [stripe-event (common/fetch-event (->stripe deps) event)]
-    (when (linked-invoice? deps stripe-event)
-      (payment-succeeded deps event stripe-event))))
+  (let [se      (common/fetch-event (->teller deps) event)
+        payment (tevent/handle-stripe-event (->teller deps) se)]
+    (payment-succeeded deps event payment)))

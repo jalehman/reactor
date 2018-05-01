@@ -12,7 +12,6 @@
   (-> {:community-safety (or safety (mock/community-safety))
        :mailer           (or mailer (mock/mailer))
        :slack            (or slack (mock/slack))
-       :stripe           (or stripe (mock/stripe))
        :public-hostname  "https://starcity.com"}
       (assoc :db db)))
 

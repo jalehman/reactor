@@ -1,7 +1,6 @@
 (ns reactor.handlers.stripe.customer.subscription.deleted
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
-            [blueprints.models.member-license :as member-license]
             [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]
@@ -11,8 +10,10 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
-            [ribbon.event :as re]
             [taoensso.timbre :as timbre]
+            [teller.customer :as tcustomer]
+            [teller.event :as tevent]
+            [teller.subscription :as tsubscription]
             [toolbelt.datomic :as td]))
 
 ;; =============================================================================
@@ -62,27 +63,26 @@
 
 
 (defmulti subscription-deleted
-  (fn [deps event stripe-event]
-    (common/subscription-type (->db deps) (re/subject-id stripe-event))))
+  (fn [deps event sub]
+    (tsubscription/payment-type sub)))
 
 
-(defmethod subscription-deleted :default [_ event stripe-event]
+(defmethod subscription-deleted :default [_ event sub]
   (timbre/warn :stripe.event.customer.subscription/deleted
                {:uuid         (event/uuid event)
-                :subscription (re/subject-id stripe-event)}))
+                :subscription (tsubscription/id sub)}))
 
 
-(defmethod subscription-deleted :rent [deps event stripe-event]
-  (let [subs-id (re/subject-id stripe-event)
-        license (member-license/by-subscription-id (->db deps) subs-id)
-        eparams {:params       {:account-id (-> license member-license/account td/id)}
+(defmethod subscription-deleted :payment.type/rent [deps event sub]
+  (let [account (-> sub tsubscription/customer tcustomer/account)
+        eparams {:params       {:account-id (td/id account)}
                  :triggered-by event}]
-    [[:db/retract (td/id license) :member-license/subscription-id subs-id]
-     (event/notify :stripe.event.customer.subscription.deleted/rent eparams)
+    [(event/notify :stripe.event.customer.subscription.deleted/rent eparams)
      (event/report :stripe.event.customer.subscription.deleted/rent eparams)]))
 
 
 (defmethod dispatch/stripe :stripe.event.customer.subscription/deleted
   [deps event params]
-  (let [stripe-event (common/fetch-event (->stripe deps) event)]
-    (subscription-deleted deps event stripe-event)))
+  (let [se  (common/fetch-event (->teller deps) event)
+        sub (tevent/handle-stripe-event (->teller deps) se)]
+    (subscription-deleted deps event sub)))
