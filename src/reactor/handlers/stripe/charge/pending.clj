@@ -1,6 +1,7 @@
 (ns reactor.handlers.stripe.charge.pending
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
+            [blueprints.models.member-license :as member-license]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.handlers.stripe.common :as common]
@@ -14,7 +15,8 @@
 (defmethod dispatch/report :stripe.event.charge/pending
   [deps event {:keys [payment-id]}]
   (let [payment (tpayment/by-id (->teller deps) payment-id)
-        account (tcustomer/account (tpayment/customer payment))]
+        account (tcustomer/account (tpayment/customer payment))
+        tz (member-license/time-zone (member-license/by-account (->db deps) account))]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -28,10 +30,10 @@
                   (str "$" (tpayment/amount payment))
                   true)
         (sm/field "Period Start"
-                  (date/short-date (tpayment/period-start payment))
+                  (date/short-date (date/tz-uncorrected (tpayment/period-start payment) tz))
                   true)
         (sm/field "Period End"
-                  (date/short-date (tpayment/period-end payment))
+                  (date/short-date (date/tz-uncorrected (tpayment/period-end payment) tz))
                   true)))))))
 
 
