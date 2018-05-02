@@ -313,9 +313,11 @@
 
 
 (defmethod dispatch/notify :payment/due [deps event {:keys [payment-id as-of]}]
-  (let [payment (tpayment/by-id (->teller deps) (d/entity (->db deps) payment-id))]
+  (let [payment (tpayment/by-entity (->teller deps) (d/entity (->db deps) payment-id))]
     (assert (tpayment/rent? payment)
             "Can only work with rent payments; not processing.")
+    (assert (not (tpayment/paid? payment))
+            "This payment has already been paid.")
     (mailer/send
      (->mailer deps)
      (-> payment tpayment/customer tcustomer/account account/email)
