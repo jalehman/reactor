@@ -5,6 +5,7 @@
             [blueprints.models.member-license :as member-license]
             [blueprints.models.note :as note]
             [blueprints.models.property :as property]
+            [clojure.string :as string]
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
@@ -19,6 +20,11 @@
 
 (defn- note-url [hostname note]
   (format "%s/accounts/%s/notes" hostname (-> note note/account :db/id)))
+
+
+(defn- scrub-text [s]
+  (-> (string/replace s #"&#39;" "'")
+      (string/replace #"&quot;" "\"")))
 
 
 ;; =============================================================================
@@ -48,9 +54,9 @@
       :channel (notification-channel (->db deps) note)}
      (sm/msg
       (sm/info
-       (sm/title (note/subject note)
+       (sm/title (scrub-text (note/subject note))
                  (note-url (->dashboard-hostname deps) note))
-       (sm/text (note/content note))
+       (sm/text (scrub-text (note/content note)))
        (sm/fields
         (sm/field "Account" (-> note note/account account/short-name) true)
         (when-let [author (note/author note)]
