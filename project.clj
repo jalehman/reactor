@@ -13,7 +13,7 @@
                  ;; services
                  [starcity/stripe-clj "0.3.3"]
                  [starcity/mailer "0.2.0"]
-                 [starcity/hubspot-clj "0.2.0"]
+                 [starcity/hubspot-clj "0.3.0"]
                  ;; util
                  [hiccup "1.0.5"]
                  [im.chit/hara.io.scheduler "2.5.10"]

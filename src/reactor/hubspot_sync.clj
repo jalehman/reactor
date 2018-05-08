@@ -25,6 +25,11 @@
 ;; ==============================================================================
 
 
+(defn- ->hs-date [date]
+  (let [date (c/to-date-time date)]
+    (c/to-long (t/date-time (t/year date) (t/month date) (t/day date)))))
+
+
 ;; 12/19/17
 ;; My hunch is that this functionality belongs somewhere else, but we need
 ;; syncing to Hubspot in the near-term. Reactor is a running service and one of
@@ -51,7 +56,11 @@
 
 
 (defmethod application-param :application/status [_ application key]
-  [:application_status (name (key application))])
+  (case (key application)
+    :application.status/submitted [:application_activity "Submitted"]
+    :application.status/approved  [:application_status "Approved"]
+    :application.status/rejected  [:application_status "Denied"]
+    [:application_activity "In progress"]))
 
 
 (defmethod application-param :application/license [_ application key]
@@ -90,11 +99,7 @@
 
 
 (defmethod application-param :application/created [db application _]
-  [:application_created_started (str (td/created-at db application))])
-
-
-(defmethod application-param :application/updated [db application _]
-  [:application_activity (str (td/updated-at db application))])
+  [:application_created_started (->hs-date (td/created-at db application))])
 
 
 (defmethod application-param :application/completed-at [db application _]
@@ -104,7 +109,7 @@
                       [?a :application/status :application.status/submitted ?tx]
                       [?tx :db/txInstant ?tx-time]]
                     db (td/id application))]
-    [:application_submitted (str d)]))
+    [:application_submitted (->hs-date d)]))
 
 
 (defmethod application-param :application/referral [_ _ _]
