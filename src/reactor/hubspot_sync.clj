@@ -12,6 +12,7 @@
             [datomic.api :as d]
             [hiccup.core :as html]
             [hubspot.contact :as contact]
+            [hubspot.deal :as deal]
             [hubspot.engagement :as engagement]
             [hubspot.http :as hubspot]
             [mount.core :refer [defstate]]
@@ -28,12 +29,6 @@
 (defn- ->hs-date [date]
   (let [date (c/to-date-time date)]
     (c/to-long (t/date-time (t/year date) (t/month date) (t/day date)))))
-
-
-;; 12/19/17
-;; My hunch is that this functionality belongs somewhere else, but we need
-;; syncing to Hubspot in the near-term. Reactor is a running service and one of
-;; the easiest to deploy, so it's a sensible place to put it for now.
 
 
 (def ^:private application-keys
@@ -60,7 +55,7 @@
     :application.status/submitted [:application_activity "Submitted"]
     :application.status/approved  [:application_status "Approved"]
     :application.status/rejected  [:application_status "Denied"]
-    [:application_activity "In progress"]))
+    [:application_activity "In-progress"]))
 
 
 (defmethod application-param :application/license [_ application key]
@@ -126,6 +121,15 @@
    application-keys))
 
 
+(defn- application-deal-params
+  [db application]
+  (select-keys (application-contact-params db application)
+               [:application_created_started
+                :application_activity
+                :application_submitted
+                :application_status]))
+
+
 ;; query applications ===========================================================
 
 
@@ -151,6 +155,71 @@
 ;; hubspot syncing ==============================================================
 
 
+(defn- dealstage
+  [application deal]
+  (let [curr-stage (get-in deal [:properties :dealstage :value])
+        status     (:application/status application)
+        account    (application/account application)]
+    (cond
+      (= (account/role account) :account.role/member)
+      "closedlost" ; moved in
+
+      (and (#{"e04d0268-ca99-4e4e-b29d-67bb01b07af7" ; tour completed
+              "appointmentscheduled"                 ; application completed
+              "qualifiedtobuy"}                      ; inbound inquiry
+            curr-stage)
+           (= status :application.status/submitted))
+      "appointmentscheduled" ; application completed
+
+      (application/approved? application)
+      "decisionmakerboughtin" ; qualified
+
+      (application/rejected? application)
+      "7ce1df7b-e7ab-4040-8cf3-567c4b5883be" ; doesn't meet qualifications/requirements (dnq)
+
+      (#{"348c5aff-b5ce-4843-950e-a005ba620ac0" ; tour canceled/no-show
+         "7ce1df7b-e7ab-4040-8cf3-567c4b5883be" ; dnq
+         "dcb2eb64-da4b-41fe-b4f2-c9854b4fd32c" ; member queue
+         "decisionmakerboughtin"                ; qualified
+         "fbd8f962-1951-4227-8c09-77dcfa15c2e1" ; lost
+         "presentationscheduled"                ; tour scheduled
+         "contractsent"                         ; agreement sent
+         "closedwon"}                           ; agreement completed
+       curr-stage)
+      nil
+
+      ;; :application.status/rejected "7ce1df7b-e7ab-4040-8cf3-567c4b5883be"
+      :otherwise "qualifiedtobuy")))
+
+
+(defn- create-deal!
+  "Create a deal for the contact in hubspot."
+  [db contact-id account application]
+  (let [params (merge
+                {:dealname  (account/short-name account)
+                 :dealstage "qualifiedtobuy"}
+                (application-deal-params db application))]
+    (timbre/info ::create-deal {:contact-id contact-id
+                                :email      (account/email account)
+                                :params     params})
+    (deal/create! {:associations {:associatedVids [contact-id]}
+                   :properties   params})))
+
+
+(defn- sync-application-deal!
+  [db contact-id account application]
+  (if-let [deal-id (-> (deal/fetch-by-contact contact-id) :deals first :dealId)]
+    (let [params (merge
+                  {:dealstage (dealstage application (deal/fetch deal-id))}
+                  (application-deal-params db application))]
+      (timbre/info ::update-deal {:contact-id contact-id
+                                  :deal-id    deal-id
+                                  :email      (account/email account)
+                                  :params     params})
+      (deal/update! deal-id {:properties params}))
+    (create-deal! (d/db conn) contact-id account application)))
+
+
 (defn- create-contact!
   "Create the contact in hubspot."
   [db account application]
@@ -172,6 +241,7 @@
                          (map :vid))]
     (timbre/info ::sync-application {:application (td/id application)
                                      :contact-ids contact-ids})
+    (sync-application-deal! (d/db conn) (first contact-ids) account application)
     @(d/transact conn [(sync/create application "" :hubspot)])))
 
 
@@ -179,7 +249,9 @@
   "Sync an existing applicant."
   [conn sync]
   (let [application (sync/ref sync)
-        account     (application/account application)]
+        account     (application/account application)
+        contact     (contact/fetch (account/email account))]
+    (sync-application-deal! (d/db conn) (:vid contact) account application)
     (contact/update! (account/email account) (application-contact-params (d/db conn) application))
     (timbre/info ::sync-application {:application (td/id application)})
     @(d/transact conn [(sync/synced-now sync)])))
