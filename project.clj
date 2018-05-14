@@ -8,8 +8,8 @@
                  [org.clojure/tools.nrepl "0.2.13"]
                  [org.clojure/tools.cli "0.3.5"]
                  ;; db
-                 [starcity/blueprints "2.5.0" :exclusions [com.datomic/datomic-free]]
-                 [starcity/teller "1.0.5"]
+                 [starcity/blueprints "2.5.2-SNAPSHOT" :exclusions [com.datomic/datomic-free]]
+                 [starcity/teller "1.1.0"]
                  ;; services
                  [starcity/stripe-clj "0.3.3"]
                  [starcity/mailer "0.2.0"]

@@ -2,6 +2,7 @@
   (:require [reactor.core]
             [reactor.config :as config :refer [config]]
             [reactor.datomic :refer [conn]]
+            [reactor.teller :refer [teller]]
             [reactor.seed :as seed]
             [clojure.spec.test.alpha :as stest]
             [clojure.tools.namespace.repl :refer [refresh]]
@@ -20,7 +21,8 @@
 (defstate seeder
   :start (when (in-memory-db? (:uri (config/datomic config)))
            (timbre/debug "seeding dev database...")
-           (seed/seed conn)))
+           (seed/seed conn)
+           (seed/seed-teller teller)))
 
 
 (def start #(mount/start-with-args {:env :dev}))

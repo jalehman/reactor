@@ -68,7 +68,7 @@
 
 
 (defmethod payment-succeeded :default [_ event payment]
-  (timbre/warn :stripe.event.invoice.payment-succeeded/unknown
+  (timbre/info :stripe.event.invoice.payment-succeeded/unknown
                {:uuid         (event/uuid event)
                 :payment      (tpayment/id payment)
                 :subscription (-> payment tpayment/subscription tsubscription/id)}))
