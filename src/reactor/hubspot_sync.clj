@@ -217,7 +217,7 @@
                                   :email      (account/email account)
                                   :params     params})
       (deal/update! deal-id {:properties params}))
-    (create-deal! (d/db conn) contact-id account application)))
+    (create-deal! db contact-id account application)))
 
 
 (defn- create-contact!
