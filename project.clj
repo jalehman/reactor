@@ -1,4 +1,4 @@
-(defproject starcity/reactor "1.10.4"
+(defproject starcity/reactor "1.10.5-SNAPSHOT"
   :description "Transactional event processing queue."
   :url "https://github.com/starcity-properties/reactor"
   :license {:name "Eclipse Public License"
