@@ -151,7 +151,7 @@
        (/ (member-license/rate license)
           ;; number of days in month
           (t/day (t/last-day-of-the-month (c/to-date-time start))))
-         ;; number of days between `start` and `end`
+       ;; number of days between `start` and `end`
        (inc (t/in-days
              (t/interval (c/to-date-time start)
                          (c/to-date-time end))))))))
@@ -263,13 +263,16 @@
 (defmethod dispatch/notify :rent-payments/alert-unpaid
   [deps event {:keys [payment-id]}]
   (let [payment (tpayment/by-id (->teller deps) payment-id)]
-    (mailer/send
-     (->mailer deps)
-     (-> payment tpayment/customer tcustomer/account account/email)
-     (mail/subject "Your Rent is Overdue")
-     (rent-overdue-body (->db deps) payment (->public-hostname deps))
-     {:uuid (event/uuid event)
-      :from mail/from-accounting})))
+    ;; "placeholder" payments, e.g. for Mission AirBnB accounts won't have a
+    ;; customer. This keeps our alerts from erroring out.
+    (when-let [customer (tpayment/customer payment)]
+      (mailer/send
+       (->mailer deps)
+       (-> customer tcustomer/account account/email)
+       (mail/subject "Your Rent is Overdue")
+       (rent-overdue-body (->db deps) payment (->public-hostname deps))
+       {:uuid (event/uuid event)
+        :from mail/from-accounting}))))
 
 
 ;; =====================================
