@@ -210,7 +210,7 @@
   [db contact-id account application]
   (if-let [deal-id (-> (deal/fetch-by-contact contact-id) :deals first :dealId)]
     (let [params (merge
-                  {:dealstage (dealstage application (deal/fetch deal-id))}
+                  (tb/assoc-when {} :dealstage (dealstage application (deal/fetch deal-id)))
                   (application-deal-params db application))]
       (timbre/info ::update-deal {:contact-id contact-id
                                   :deal-id    deal-id
