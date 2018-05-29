@@ -1,5 +1,6 @@
 (ns reactor.scheduler
   (:require [blueprints.models.events :as events]
+            [blueprints.models.event :as event]
             [datomic.api :as d]
             [hara.io.scheduler :as sch]
             [mount.core :refer [defstate]]
@@ -13,9 +14,10 @@
   (let [params {:conn conn}]
     (sch/scheduler
      (tb/assoc-when
-      {:create-rent-payments
+      ;; process any license transitions this month, then create rent payments as appropro
+      {:conduct-monthly-operations
        {:handler  (fn [t {conn :conn}]
-                    (d/transact-async conn [(events/create-monthly-rent-payments t)]))
+                    (d/transact-async conn [(event/job :operations/first-of-month {:params {:t t}})]))
         ;; first of every month
         :params   params
         :schedule "0 0 0 * 1 * *"}

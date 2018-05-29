@@ -9,6 +9,7 @@
             [reactor.handlers.account]
             [reactor.handlers.application]
             [reactor.handlers.collaborator]
+            [reactor.handlers.license-transition]
             [reactor.handlers.newsletter]
             [reactor.handlers.note]
             [reactor.handlers.order]
