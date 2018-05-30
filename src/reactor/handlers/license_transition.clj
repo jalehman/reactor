@@ -67,7 +67,7 @@
 (defmethod dispatch/job :transition/move-out-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition (license-transition/by-uuid (->db deps) transition-uuid)]
-    (event/report (event/key event) {:params       {:transition-uuid transition-uuid}
-                                     :triggered-by event})
-    (event/notify (event/key event) {:params       {:transition-uuid transition-uuid}
-                                     :triggered-by event})))
+    [(event/report (event/key event) {:params       {:transition-uuid transition-uuid}
+                                      :triggered-by event})
+     (event/notify (event/key event) {:params       {:transition-uuid transition-uuid}
+                                      :triggered-by event})]))
