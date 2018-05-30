@@ -22,22 +22,45 @@
   (format "%s/accounts/%s" hostname account-id))
 
 
+(defn- make-friendly-unit-name
+  [unit]
+  (let [code        (unit/code unit)
+        property    (property/name (unit/property unit))
+        unit-number (subs code (inc (clojure.string/last-index-of code "-")))]
+    (str property " #" unit-number)))
+
+
+(def ^:private property-channel
+  {"52gilbert"   "#52-gilbert"
+   "2072mission" "#2072-mission"
+   "6nottingham" "#6-nottingham"
+   "414bryant"   "#414-byant"})
+
+
+(defn- notification-channel [property]
+  (let [code (property/code property)]
+    (get property-channel code slack/crm)))
+
+
 ;; slack notification -> staff
 (defmethod dispatch/report :transition/move-out-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition (license-transition/by-uuid (->db deps) transition-uuid)
         license    (license-transition/current-license transition)
-        member     (member-license/account license)]
+        member     (member-license/account license)
+        unit       (member-license/unit license)]
+
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel "#debug"}
+      :channel (notification-channel (unit/property unit))}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " is moving out!")
                  (member-url (->dashboard-hostname deps) (td/id member)))
        (sm/text "Learn more about this member's move out in the Admin Dashboard.")
        (sm/fields
+        (sm/field "Unit" (make-friendly-unit-name unit))
         (sm/field "Move-out date" (date/short (license-transition/date transition)))))))))
 
 
