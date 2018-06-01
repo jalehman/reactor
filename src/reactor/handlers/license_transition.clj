@@ -88,7 +88,6 @@
      {:uuid (event/uuid event)})))
 
 
-
 (defmethod dispatch/job :transition/move-out-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition (license-transition/by-uuid (->db deps) transition-uuid)]
@@ -100,7 +99,6 @@
 
 (defmethod dispatch/report :transition/move-out-updated
   [deps event {:keys [transition-id]  :as params}]
-  ;;TODO - send a slack message
   (let [transition (d/entity (->db deps) transition-id)
         license    (license-transition/current-license transition)
         member     (member-license/account license)
