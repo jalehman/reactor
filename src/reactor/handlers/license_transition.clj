@@ -61,7 +61,9 @@
        (sm/text "Learn more about this member's move out in the Admin Dashboard.")
        (sm/fields
         (sm/field "Unit" (make-friendly-unit-name unit))
-        (sm/field "Move-out date" (date/short (license-transition/date transition)))))))))
+        (sm/field "Move-out date" (date/short (license-transition/date transition)))
+        (when-let [a (:asana/task transition)]
+          (sm/field "Asana Move-out Task" a))))))))
 
 
 ;; email notification -> member
@@ -94,3 +96,33 @@
                                       :triggered-by event})
      (event/notify (event/key event) {:params       {:transition-uuid transition-uuid}
                                       :triggered-by event})]))
+
+
+(defmethod dispatch/report :transition/move-out-updated
+  [deps event {:keys [transition-id]  :as params}]
+  ;;TODO - send a slack message
+  (let [transition (d/entity (->db deps) transition-id)
+        license    (license-transition/current-license transition)
+        member     (member-license/account license)
+        unit       (member-license/unit license)]
+
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel (notification-channel (unit/property unit))}
+     (sm/msg
+      (sm/info
+       (sm/title (str "Updated Move-out Info for " (account/short-name member))
+                 (member-url (->dashboard-hostname deps) (td/id member)))
+       (sm/text "Learn more about this member's move out in the Admin Dashboard.")
+       (sm/fields
+        (sm/field "Unit" (make-friendly-unit-name unit))
+        (sm/field "Move-out date" (date/short (license-transition/date transition)))
+        (when-let [a (:asana/task transition)]
+          (sm/field "Asana Move-out Task" a))))))))
+
+
+(defmethod dispatch/job :transition/move-out-updated
+  [deps event {:keys [transition-id] :as params}]
+  [(event/report (event/key event) {:params {:transition-id transition-id}
+                                    :triggered-by event})])
