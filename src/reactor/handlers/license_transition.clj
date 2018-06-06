@@ -150,7 +150,33 @@
         (sm/field "Renewal date" (date/short (license-transition/date transition)))))))))
 
 
+(defmethod dispatch/notify :transition/renewal-created
+  [deps event {:keys [transition-uuid] :as params}]
+  (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
+        current-license (license-transition/current-license transition)
+        new-license     (license-transition/new-license transition)
+        member          (member-license/account current-license)
+        unit            (member-license/unit current-license)]
+    ;; TODO - send an email message
+    (mailer/send
+     (->mailer deps)
+     (account/email member)
+     (mail/subject (format "%s, your license has been renewed!" (account/first-name member)))
+     (mm/msg
+      (mm/greet (account/first-name member))
+      (mm/p
+       "Thank you for renewing your license with us!")
+      (mm/p
+       (format "Your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (date/short (member-license/starts new-license)) (member-license/term new-license) (format/currency (member-license/rate new-license))))
+      (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
+      (mm/sig))
+     {:uuid (event/uuid event)})
+    ))
+
+
 (defmethod dispatch/job :transition/renewal-created
   [deps event {:keys [transition-uuid] :as params}]
   [(event/report (event/key event) {:params       {:transition-uuid transition-uuid}
+                                    :triggered-by event})
+   (event/notify (event/key event) {:params       {:transition-uuid transition-uuid}
                                     :triggered-by event})])
