@@ -7,11 +7,13 @@
             [blueprints.models.member-license :as member-license]
             [blueprints.models.order :as order]
             [blueprints.models.property :as property]
-            [blueprints.models.sync :as sync]
             [blueprints.models.unit :as unit]
+            [clj-time.coerce :as c]
+            [clj-time.core :as t]
             [clojure.string :as string]
             [customs.auth :as auth]
             [datomic.api :as d]
+            [hubspot.contact :as contact]
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
@@ -20,13 +22,12 @@
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
             [ring.util.codec :refer [form-encode]]
+            [taoensso.timbre :as timbre]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
             [toolbelt.datomic :as td]
-            [blueprints.models.application :as application]
-            [hubspot.contact :as contact]
-            [taoensso.timbre :as timbre]
-            [clj-time.core :as t]))
+            [teller.payment :as tpayment]
+            [teller.customer :as tcustomer]))
 
 ;; =============================================================================
 ;; Helpers
@@ -93,9 +94,34 @@
                   :triggered-by event})])
 
 
-;; =============================================================================
-;; Promotion
-;; =============================================================================
+;; ==============================================================================
+;; promotion ====================================================================
+;; ==============================================================================
+
+
+;; create first-month's rent ====================================================
+
+
+(defn- prorated-amount [start rate]
+  (let [start          (c/to-date-time start)
+        days-in-month  (t/day (t/last-day-of-the-month start))
+        ;; We inc the days-remaining so that the move-in day is included in the calculation
+        days-remaining (inc (- days-in-month (t/day start)))]
+    (tb/round (* (/ rate days-in-month) days-remaining) 2)))
+
+
+(defmethod dispatch/job ::create-first-months-rent [deps event params]
+  (let [account  (d/entity (->db deps) (:account-id params))
+        customer (tcustomer/by-account (->teller deps) account)
+        license  (member-license/active (->db deps) account)
+        tz       (member-license/time-zone license)
+        pstart   (member-license/starts license)
+        amount   (prorated-amount pstart (member-license/rate license))]
+    (tpayment/create! customer amount :payment.type/rent
+                      {:period [pstart (date/end-of-month pstart tz)]
+                       :status :payment.status/due
+                       :due    pstart})
+    nil))
 
 
 ;; hubspot close date ===========================================================
@@ -113,8 +139,7 @@
                          {:closedate (.getTime now)})))))
 
 
-;; =============================================================================
-;; Services Ordered
+;; helping hands order summary =================================================
 
 
 (defn- fmt-order [index order]
@@ -156,8 +181,7 @@
           (sm/field "Account" (account-link (->dashboard-hostname deps) account)))))))))
 
 
-;; =============================================================================
-;; Report
+;; report ======================================================================
 
 
 (defmethod dispatch/report :account/promoted [deps event params]
@@ -175,8 +199,7 @@
         (sm/field "Unit" (unit-link (->dashboard-hostname deps) (member-license/unit license)) true)))))))
 
 
-;; =============================================================================
-;; Notify
+;; notify ======================================================================
 
 
 (defn- ^:private promotion-email-subject [property]
@@ -227,6 +250,8 @@
 
        (event/report :account.promoted/order-summary
                      {:params params :triggered-by event})
+       (event/job ::create-first-months-rent
+                  {:params params :triggered-by event})
        (event/job ::set-hubspot-close-date
                   {:params params :triggered-by event})])))
 

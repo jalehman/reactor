@@ -14,12 +14,12 @@
 
 (def from-community
   "Community from address."
-  "Meg Bell <meg@starcity.com>")
+  "Starcity Community Team <community@starcity.com>")
 
 
 (def community-sig
   "Community signature."
-  (mm/sig "Meg Bell" "VP of Community"))
+  (mm/sig "Starcity Community"))
 
 
 (defn subject

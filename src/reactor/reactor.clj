@@ -21,7 +21,8 @@
             [taoensso.timbre :as timbre]
             [toolbelt.async :as ta :refer [<!!?]]
             [toolbelt.core :as tb]
-            [toolbelt.datomic :as td]))
+            [toolbelt.datomic :as td]
+            [teller.core :as teller]))
 
 ;; =============================================================================
 ;; Internal
@@ -198,12 +199,12 @@
 
 (defn start!
   "Start a queue for each topic in `topics`."
-  ([conn tx-report-ch]
-   (start! conn tx-report-ch (deps/deps)))
-  ([conn tx-report-ch conf]
+  ([conn teller tx-report-ch]
+   (start! conn tx-report-ch (deps/deps teller)))
+  ([conn teller tx-report-ch conf]
    (let [mult            (a/mult tx-report-ch)
          tx-report-queue (install-report-queue conn tx-report-ch)
-         deps            (if (deps/deps? conf) conf (deps/deps conf))
+         deps            (deps/deps teller conf)
          queues          (start-queues! conn mult deps)]
      (process-pending-events! conn deps)
      {:conn            conn
@@ -214,6 +215,7 @@
 
 (s/fdef start!
         :args (s/cat :conn td/conn?
+                     :teller teller/connection?
                      :chan ta/chan?
                      :conf (s/? deps/config?)))
 

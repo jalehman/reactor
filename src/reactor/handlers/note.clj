@@ -5,12 +5,14 @@
             [blueprints.models.member-license :as member-license]
             [blueprints.models.note :as note]
             [blueprints.models.property :as property]
+            [clojure.string :as string]
             [datomic.api :as d]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
-            [toolbelt.core :as tb]))
+            [toolbelt.core :as tb]
+            [taoensso.timbre :as timbre]))
 
 ;; =============================================================================
 ;; Helpers
@@ -19,6 +21,11 @@
 
 (defn- note-url [hostname note]
   (format "%s/accounts/%s/notes" hostname (-> note note/account :db/id)))
+
+
+(defn- scrub-text [s]
+  (-> (string/replace s #"&#39;" "'")
+      (string/replace #"&quot;" "\"")))
 
 
 ;; =============================================================================
@@ -38,28 +45,57 @@
     (get property-channel code slack/crm)))
 
 
+(defn- get-properties [db refs]
+  (set (map
+        #(cond
+           (some? (account/email %)) (property/code (account/current-property db %))
+           (some? (property/code %)) (property/code %)
+           :otherwise nil)
+        refs)))
+
+
+(defn- get-notification-channels [db refs]
+  (let [properties (get-properties db refs)]
+    (map #(get property-channel % slack/crm) properties)))
+
+
+(defn- get-mentions [refs]
+  (->> refs
+       (map
+        #(cond
+           (some? (account/email %)) (account/short-name %)
+           (some? (property/code %)) (property/code %)
+           :otherwise nil))
+       (remove nil?)))
+
+
 (defmethod dispatch/report :note/created
-  [deps event {:keys [uuid]}]
+  [deps event {:keys [uuid slack-channel] :as params}]
   (let [note     (note/by-uuid (->db deps) uuid)
-        type     (if (note/ticket? note) "ticket" "note")]
+        type     (if (note/ticket? note) "ticket" "note")
+        mentions (apply str (interpose ", " (-> note note/refs get-mentions)))]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (notification-channel (->db deps) note)}
+      :channel slack-channel}
      (sm/msg
       (sm/info
-       (sm/title (note/subject note)
+       (sm/title (scrub-text (note/subject note))
                  (note-url (->dashboard-hostname deps) note))
-       (sm/text (note/content note))
+       (sm/text (scrub-text (note/content note)))
        (sm/fields
-        (sm/field "Account" (-> note note/account account/short-name) true)
+        (sm/field "Mentions" mentions true)
         (when-let [author (note/author note)]
           (sm/field "Author" (account/short-name author) true))))))))
 
 
-(defmethod dispatch/job :note/created [deps event params]
-  (event/report (event/key event) {:params       params
-                                   :triggered-by event}))
+(defmethod dispatch/job :note/created [deps event {:keys [refs uuid] :as params}]
+  (let [note     (note/by-uuid (->db deps) uuid)
+        channels (get-notification-channels (->db deps) (note/refs note))]
+    (map
+     #(event/report (event/key event) {:params       (assoc params :slack-channel %)
+                                       :triggered-by event})
+     channels)))
 
 
 (defmethod dispatch/job :note/create

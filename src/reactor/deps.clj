@@ -1,11 +1,10 @@
 (ns reactor.deps
   (:require [clojure.spec.alpha :as s]
-            [ribbon.core :as ribbon]
             [reactor.services.community-safety :as cs]
             [mailer.core :as mailer]
             [reactor.config :as config :refer [config]]
             [reactor.services.slack :as slack]
-            [ribbon.core :as ribbon]
+            [teller.core :as teller]
             [mock.mock :as mock]
             [toolbelt.core :as tb]))
 
@@ -24,7 +23,7 @@
     (mock/community-safety)))
 
 
-(defn- mailer [{:keys [api-key domain sender send-to]}]
+(defn- mailer [{:keys [api-key domain sender send-to] :as conf}]
   (mailer/mailgun api-key domain (tb/assoc-when
                                   {}
                                   :sender sender
@@ -35,12 +34,6 @@
   (if (some? channel)
     (slack/slack webhook-url username channel)
     (slack/slack webhook-url username)))
-
-
-(defn- stripe [{:keys [secret-key]}]
-  (if (some? secret-key)
-    (ribbon/stripe-connection secret-key)
-    (mock/stripe)))
 
 
 ;; =====================================
@@ -81,14 +74,14 @@
 (s/def ::mailer #(satisfies? mailer.core/Mailer %))
 (s/def ::community-safety #(satisfies? reactor.services.community-safety/ICommunitySafety %))
 (s/def ::slack #(satisfies? reactor.services.slack/ISlack %))
-(s/def ::stripe ribbon/conn?)
+(s/def ::teller teller/connection?)
 (s/def ::public-hostname string?)
 (s/def ::dashboard-hostname string?)
 (s/def ::deps
   (s/keys :req-un [::mailer
                    ::community-safety
                    ::slack
-                   ::stripe
+                   ::teller
                    ::public-hostname
                    ::dashboard-hostname]))
 
@@ -96,24 +89,25 @@
 (defn deps
   "Construct the dependencies map for `reactor` to function. When the no-arg
   variant is used mock dependencies will be used."
-  ([]
+  ([teller]
    {:community-safety   (mock/community-safety)
     :mailer             (mock/mailer)
     :slack              (mock/slack)
-    :stripe             (mock/stripe)
+    :teller             teller
     :public-hostname    "http://localhost:8080"
     :dashboard-hostname "http://localhost:8082"})
-  ([config]
+  ([teller config]
    (s/assert ::config config)
    {:community-safety   (community-safety (:community-safety config))
     :mailer             (mailer (:mailer config))
     :slack              (slack (:slack config))
-    :stripe             (stripe (:stripe config))
+    :teller             teller
     :public-hostname    (:public-hostname config)
     :dashboard-hostname (:dashboard-hostname config)}))
 
 (s/fdef deps
-        :args (s/cat :config ::config)
+        :args (s/cat :teller ::teller
+                     :config (s/? ::config))
         :ret ::deps)
 
 
