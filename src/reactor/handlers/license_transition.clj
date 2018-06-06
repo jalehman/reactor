@@ -124,3 +124,33 @@
   [deps event {:keys [transition-id] :as params}]
   [(event/report (event/key event) {:params {:transition-id transition-id}
                                     :triggered-by event})])
+
+
+(defmethod dispatch/report :transition/renewal-created
+  [deps event {:keys [transition-uuid] :as params}]
+  (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
+        current-license (license-transition/current-license transition)
+        new-license     (license-transition/new-license transition)
+        member          (member-license/account current-license)
+        unit            (member-license/unit current-license)]
+
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :cahnnel (notification-channel (unit/property unit))}
+     (sm/msg
+      (sm/info
+       (sm/title (str (account/short-name member) " has renewed their license!")
+                 (member-url (->dashboard-hostname deps) (td/id member)))
+       (sm/text "Learn more about this member's renewal in the Admin Dashboard.")
+       (sm/fields
+        (sm/field "Unit" (make-friendly-unit-name unit))
+        (sm/field "New License Term" (member-license/term new-license))
+        (sm/field "New License Rate" (member-license/rate new-license))
+        (sm/field "Renewal date" (date/short (license-transition/date transition)))))))))
+
+
+(defmethod dispatch/job :transition/renewal-created
+  [deps event {:keys [transition-uuid] :as params}]
+  [(event/report (event/key event) {:params       {:transition-uuid transition-uuid}
+                                    :triggered-by event})])
