@@ -21,7 +21,7 @@
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
-            [ring.util.codec :refer [url-encode]]
+            [ring.util.codec :refer [form-encode]]
             [taoensso.timbre :as timbre]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
@@ -62,7 +62,7 @@
       (mm/p "Thanks for signing up!")
       (mm/p (format "<a href='%s/signup/activate?email=%s&hash=%s'>Click here to activate your account</a> and apply for a home."
                     (->public-hostname deps)
-                    (url-encode (account/email account))
+                    (form-encode (account/email account))
                     (account/activation-hash account)))
       (mm/sig))
      {:uuid (event/uuid event)})))
@@ -302,7 +302,7 @@
   [deps event {:keys [account-id new-password]}]
   (let [account (d/entity (->db deps) account-id)
         link    (format "%s/login?email=%s&next=/account"
-                        (->public-hostname deps) (url-encode (account/email account)))]
+                        (->public-hostname deps) (form-encode (account/email account)))]
     (mailer/send
      (->mailer deps)
      (account/email account)

@@ -7,6 +7,7 @@
                  [org.clojure/core.async "0.4.474"]
                  [org.clojure/tools.nrepl "0.2.13"]
                  [org.clojure/tools.cli "0.3.5"]
+                 [org.clojure/tools.namespace "0.2.11"]
                  ;; db
                  [starcity/blueprints "2.5.4" :exclusions [com.datomic/datomic-free]]
                  [starcity/teller "1.1.1"]
@@ -27,7 +28,7 @@
                  [clj-time "0.14.2"]
                  [mount "0.1.11"]
                  [aero "1.1.2"]
-                 [ring "1.6.3"]
+                 [ring/ring-codec "1.1.0"]
                  ;; dependency resolution
                  [org.apache.httpcomponents/httpclient "4.5.4"]]
 
