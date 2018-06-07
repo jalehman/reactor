@@ -2,6 +2,7 @@
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
             [blueprints.models.events :as events]
+            [blueprints.models.license :as license]
             [blueprints.models.license-transition :as transition]
             [blueprints.models.member-license :as member-license]
             [blueprints.models.unit :as unit]
@@ -18,9 +19,7 @@
             [teller.subscription :as tsubscription]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]
-            [blueprints.models.license :as license]
-            [blueprints.models.license-transition :as license-transition]))
+            [toolbelt.datomic :as td]))
 
 ;; ==============================================================================
 ;; Daily ========================================================================
@@ -56,7 +55,6 @@
          (filter #(nil? (transition/by-license db %))))))
 
 
-;; NOTE - this has been verified to work as of end of day wednesday!
 (defmethod dispatch/job ::create-month-to-month-transition
   [deps event {:keys [license-id] :as params}]
   (let [old-license (d/entity (->db deps) license-id)
@@ -65,7 +63,7 @@
                                            (member-license/ends old-license)
                                            (member-license/rate old-license)
                                            :member-license.status/pending)
-        transition  (license-transition/create old-license
+        transition  (transition/create old-license
                                                :license-transition.type/renewal
                                                (member-license/starts new-license)
                                                {:new-license new-license})]
@@ -74,26 +72,15 @@
      (events/month-to-month-transition-created transition)]))
 
 
-;; NOTE - this does not appear to work at the moment. transacting the subsequent
-;; event wil yield a reactor "extraction error" message, and i'm not entirely
-;; certain how to troubleshoot that at the moment
 (defmethod dispatch/job ::create-month-to-month-renewals
   [deps event {:keys [t] :as params}]
-  (let [licenses (licenses-without-transitions-ending-in-days (c/to-date t) 30)]
+  (let [licenses (licenses-without-transitions-ending-in-days (->db deps) t 30)]
     (map
      (fn [license]
        (event/job ::create-month-to-month-transition {:params {:license-id (td/id license)}
                                                       :triggered-by      event}))
      licenses)))
 
-
-
-(comment
-  (event/job ::create-month-to-month-renewals {:params {:t (t/date-time 2018 7 30)}})
-
-
-
-  )
 
 ;; ==============================================================================
 ;; First of Month ===============================================================
@@ -235,26 +222,6 @@
       (event/job ::reactivate-autopay {:params       {:transition-id transition-id
                                                       :source-id     source-id}
                                        :triggered-by event}))))
-
-
-(comment
-
-
-  (def conn odin.datomic/conn)
-
-  (def teller odin.teller/teller)
-
-  (let [account    (d/entity (d/db conn) [:account/email "member@test.com"])
-        license    (member-license/active (d/db conn) account)
-        transition (first (:license-transition/_current-license license))
-        license    (transition/current-license transition)]
-    #_(event/job ::deactivate-autopay {:params {:transition-id (td/id transition)
-                                              :reactivate?   false}}))
-
-  (event/job ::prepare-renewals {:params {:period (c/to-date (date/end-of-month (c/to-date (t/date-time 2018 07))))}})
-
-
-  )
 
 
 ;; moveouts =============================
