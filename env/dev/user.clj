@@ -6,6 +6,7 @@
             [reactor.seed :as seed]
             [clojure.spec.test.alpha :as stest]
             [clojure.tools.namespace.repl :refer [refresh]]
+            [datomic.api :as d]
             [mount.core :as mount :refer [defstate]]
             [taoensso.timbre :as timbre]))
 

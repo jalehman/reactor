@@ -21,6 +21,9 @@
 (defn ->mailer [deps] (:mailer deps))
 
 
+(defn ->tipe [deps] (:tipe deps))
+
+
 (defn ->cf [deps] (:community-safety deps))
 
 
