@@ -202,10 +202,10 @@
                  (member-url (->dashboard-hostname deps) (td/id member)))
        (sm/text "Learn more about this member's renewal in the Admin Dashboard.")
        (sm/fields
-        (sm/field "Unit" (make-friendly-unit-name unit))
-        (sm/field "New License Term" (member-license/term new-license))
-        (sm/field "New License Rate" (member-license/rate new-license))
-        (sm/field "Renewal date" (date/short (license-transition/date transition)))))))))
+        (sm/field "Unit" (make-friendly-unit-name unit) true)
+        (sm/field "New License Term" (member-license/term new-license) true)
+        (sm/field "New License Rate" (member-license/rate new-license) true)
+        (sm/field "Renewal date" (date/short (license-transition/date transition)) true)))))))
 
 
 (defmethod dispatch/notify :transition/month-to-month-created
