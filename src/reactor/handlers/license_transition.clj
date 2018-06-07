@@ -157,7 +157,6 @@
         new-license     (license-transition/new-license transition)
         member          (member-license/account current-license)
         unit            (member-license/unit current-license)]
-    ;; TODO - send an email message
     (mailer/send
      (->mailer deps)
      (account/email member)
@@ -167,7 +166,7 @@
       (mm/p
        "Thank you for renewing your license with us!")
       (mm/p
-       (format "Your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (date/short (member-license/starts new-license)) (member-license/term new-license) (format/currency (member-license/rate new-license))))
+       (format "Your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
       (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
       (mm/sig))
      {:uuid (event/uuid event)})
@@ -175,6 +174,62 @@
 
 
 (defmethod dispatch/job :transition/renewal-created
+  [deps event {:keys [transition-uuid] :as params}]
+  [(event/report (event/key event) {:params       {:transition-uuid transition-uuid}
+                                    :triggered-by event})
+   (event/notify (event/key event) {:params       {:transition-uuid transition-uuid}
+                                    :triggered-by event})])
+
+
+;; Month-to-month transition notifications =======================================
+
+
+(defmethod dispatch/report :transition/month-to-month-created
+  [deps event {:keys [transition-uuid] :as params}]
+  (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
+        current-license (license-transition/current-license transition)
+        new-license     (license-transition/new-license transition)
+        member          (member-license/account current-license)
+        unit            (member-license/unit current-license)]
+
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :cahnnel (notification-channel (unit/property unit))}
+     (sm/msg
+      (sm/info
+       (sm/title (str (account/short-name member) " has been renewed for a month-to-month license!")
+                 (member-url (->dashboard-hostname deps) (td/id member)))
+       (sm/text "Learn more about this member's renewal in the Admin Dashboard.")
+       (sm/fields
+        (sm/field "Unit" (make-friendly-unit-name unit))
+        (sm/field "New License Term" (member-license/term new-license))
+        (sm/field "New License Rate" (member-license/rate new-license))
+        (sm/field "Renewal date" (date/short (license-transition/date transition)))))))))
+
+
+(defmethod dispatch/notify :transition/month-to-month-created
+  [deps event {:keys [transition-uuid] :as params}]
+  (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
+        current-license (license-transition/current-license transition)
+        new-license     (license-transition/new-license transition)
+        member          (member-license/account current-license)
+        unit            (member-license/unit current-license)]
+    (mailer/send
+     (->mailer deps)
+     (account/email member)
+     (mail/subject (format "%s, we've renewed your license." (account/first-name member)))
+     (mm/msg
+      (mm/greet (account/first-name member))
+      (mm/p
+       "We haven't yet heard from you regarding your plans for the end of your current Starcity license. We require 30 days notice in any scenario. Since we're within 30 days of the end of your license but haven't received notice, we've renewed your license for a month-to-month term. HEY MARKETING/COMMUNITY YALL SHOULD PUNCH UP THIS EMAIL COPY AN ENGINEER WROTE IT AND ITS NOT GOOD!")
+      (mm/p
+       (format "Your new license will take effect on %s. This license is effective for a %s month term at a rate of %s/month. We will continue to roll your license over on a month-to-month basis until we've received your notice of intent to move out." (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
+      (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
+      (mm/sig))
+     {:uuid (event/uuid event)})))
+
+(defmethod dispatch/job :transition/month-to-month-created
   [deps event {:keys [transition-uuid] :as params}]
   [(event/report (event/key event) {:params       {:transition-uuid transition-uuid}
                                     :triggered-by event})
