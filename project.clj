@@ -28,8 +28,11 @@
                  [mount "0.1.11"]
                  [aero "1.1.2"]
                  [ring "1.6.3"]
+                 [http-kit "2.2.0"]
                  ;; dependency resolution
-                 [org.apache.httpcomponents/httpclient "4.5.4"]]
+                 [org.apache.httpcomponents/httpclient "4.5.4"]
+                 [clostache "0.6.1"]
+                 [markdown-clj "1.0.2"]]
 
   :plugins [[s3-wagon-private "1.2.0"]]
 

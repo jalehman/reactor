@@ -8,9 +8,15 @@
             [blueprints.models.unit :as unit]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
+            [clostache.parser :as stache]
             [datomic.api :as d]
+            [mailer.core :as mailer]
+            [mailer.message :as mm]
+            [markdown.core :as md]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
+            [reactor.utils.mail :as mail]
+            [reactor.utils.tipe :as tipe]
             [teller.customer :as tcustomer]
             [teller.payment :as tpayment]
             [teller.plan :as tplan]
@@ -26,6 +32,12 @@
 ;; ==============================================================================
 
 
+(def reminder-interval
+  "The number of days which should pass between sending renewal reminders to an
+  unresponsive member."
+  [45 40 37 33 31])
+
+
 (defmethod dispatch/job :ops/daily
   [deps event params]
   ;;TODO - dispatch an event that will
@@ -35,10 +47,15 @@
   )
 
 
-;; passive renewals (roll to month-to-month) ====================================
+
+
+
+;; helpers ======================================================================
+
 
 (defn- licenses-without-transitions-ending-in-days
-  "Find all the licenses that do not have transitions that end a precise number of `days` after date `t`."
+  "Find all the licenses that do not have transitions that end a precise number of
+  `days` after date `t`."
   [db t days]
   (let [then  (c/to-date (t/plus (c/to-date-time t) (t/days days)))
         start (c/to-date (date/beginning-of-day then))
@@ -52,7 +69,58 @@
             [(.before ^java.util.Date ?date ?end)]]
           db start end)
          (map (partial d/entity db))
-         (filter #(nil? (transition/by-license db %))))))
+         (filter member-license/has-transition?))))
+
+
+;; Renewal Reminders ============================================================
+
+
+(defmethod dispatch/job ::send-renewal-reminders
+  [deps event {:keys [t interval] :as params}]
+  (let [licenses (licenses-without-transitions-ending-in-days (->db deps) t (first interval))]
+    (-> (map
+         (fn [license]
+           (event/notify ::send-renewal-reminder {:params       {:license-id (td/id license)
+                                                                 :days       (first interval)}
+                                                  :triggered-by event}))
+         licenses)
+        (tb/conj-when
+         (when-not (empty? (rest interval))
+           (event/job (event/key event) {:params       {:interval (rest interval)
+                                                        :t        t}
+                                         :triggered-by event}))))))
+
+
+(def renewal-reminder-document-id
+  "the Tipe document id for the renewal reminder email template"
+  "5b196fde154a600013c5757a")
+
+
+(defn prepare-renewal-email
+  [document account license]
+  (tb/transform-when-key-exists document
+    {:body (fn [body]
+             (-> (stache/render body {:name   (account/first-name account)
+                                   :ends   (date/short (member-license/ends license))
+                                      :sender "Starcity Community"})
+                 (md/md-to-html-string)))}))
+
+
+(defmethod dispatch/notify ::send-renewal-reminder
+  [deps event {:keys [license-id days]}]
+  (let [license  (d/entity (->db deps) license-id)
+        account  (member-license/account license)
+        document (tipe/fetch-document (->tipe deps) renewal-reminder-document-id)
+        content  (prepare-renewal-email document account license)]
+    (mailer/send
+     (->mailer deps)
+     (account/email account)
+     (mail/subject (:subject content))
+     (mm/msg (:body content))
+     {:uuid (event/uuid event)})))
+
+
+;; passive renewals (roll to month-to-month) ====================================
 
 
 (defmethod dispatch/job ::create-month-to-month-transition
@@ -64,9 +132,9 @@
                                            (member-license/rate old-license)
                                            :member-license.status/pending)
         transition  (transition/create old-license
-                                               :license-transition.type/renewal
-                                               (member-license/starts new-license)
-                                               {:new-license new-license})]
+                                       :license-transition.type/renewal
+                                       (member-license/starts new-license)
+                                       {:new-license new-license})]
     [new-license
      transition
      (events/month-to-month-transition-created transition)]))

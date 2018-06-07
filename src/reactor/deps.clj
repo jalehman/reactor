@@ -101,6 +101,7 @@
    {:community-safety   (community-safety (:community-safety config))
     :mailer             (mailer (:mailer config))
     :slack              (slack (:slack config))
+    :tipe               (:tipe config)
     :teller             teller
     :public-hostname    (:public-hostname config)
     :dashboard-hostname (:dashboard-hostname config)}))
