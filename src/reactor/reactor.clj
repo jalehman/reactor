@@ -12,6 +12,7 @@
             [reactor.handlers.license-transition]
             [reactor.handlers.newsletter]
             [reactor.handlers.note]
+            [reactor.handlers.operations]
             [reactor.handlers.order]
             [reactor.handlers.rent]
             [reactor.handlers.scheduler]
