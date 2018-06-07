@@ -25,7 +25,10 @@
             [teller.subscription :as tsubscription]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]))
+            [toolbelt.datomic :as td]
+            [reactor.services.slack :as slack]
+            [blueprints.models.property :as property]
+            [reactor.services.slack.message :as sm]))
 
 ;; ==============================================================================
 ;; Daily ========================================================================
@@ -53,26 +56,84 @@
 ;; helpers ======================================================================
 
 
+(defn- licenses-without-transitions-between
+  [db from to]
+  (->> (d/q
+        '[:find [?l ...]
+          :in $ ?start ?end
+          :where
+          [?l :member-license/ends ?date]
+          [?l :member-license/status :member-license.status/active]
+          [(.after ^java.util.Date ?date ?start)]
+          [(.before ^java.util.Date ?date ?end)]]
+        db from to)
+       (map (partial d/entity db))
+       (remove member-license/has-transition?)))
+
+
 (defn- licenses-without-transitions-ending-in-days
   "Find all the licenses that do not have transitions that end a precise number of
   `days` after date `t`."
   [db t days]
   (let [then  (c/to-date (t/plus (c/to-date-time t) (t/days days)))
-        start (c/to-date (date/beginning-of-day then))
-        end   (c/to-date (date/end-of-day then))]
-    (->> (d/q
-          '[:find [?l ...]
-            :in $ ?start ?end
-            :where
-            [?l :member-license/ends ?date]
-            [(.after ^java.util.Date ?date ?start)]
-            [(.before ^java.util.Date ?date ?end)]]
-          db start end)
-         (map (partial d/entity db))
-         (filter member-license/has-transition?))))
+        start (date/beginning-of-day then)
+        end   (date/end-of-day then)]
+    (licenses-without-transitions-between db start end)))
 
 
-;; Renewal Reminders ============================================================
+(defn- licenses-without-transitions-ending-within
+  "Find all the licenses that do not have transitions that end within `from-days`
+  and `to-days` after date `t`."
+  [db t days-from days-to]
+  (let [from  (c/to-date (t/plus (c/to-date-time t) (t/days days-from)))
+        to    (c/to-date (t/plus (c/to-date-time t) (t/days days-to)))
+        start (date/beginning-of-day from)
+        end   (date/end-of-day to)]
+    (licenses-without-transitions-between db start end)))
+
+
+;; Report soon-to-expire, untransitioned licenses ===============================
+
+
+(defn- fmt-license [db t i license]
+  (let [account (member-license/account license)
+        ends-on (member-license/ends license)
+        days    (-> (c/to-date-time t)
+                    (t/interval (c/to-date-time ends-on))
+                    (t/in-days))]
+    (format "%s. %s's license for %s is expiring *in %s days* (on %s)"
+            (inc i)
+            (account/short-name account)
+            (unit/code (member-license/unit license))
+            days
+            (-> ends-on
+                (date/tz-uncorrected (member-license/time-zone license))
+                date/short))))
+
+
+(defn send-untransitioned-report
+  [deps t property licenses]
+  (slack/send
+   (->slack deps)
+   {:channel (property/slack-channel property)}
+   (sm/msg
+    (sm/warn
+     (sm/title "The following members have expiring licenses")
+     (sm/pretext "_I've sent an email reminding each member to inform us of their plans for the end of their license._")
+     (sm/text (->> (sort-by member-license/ends licenses)
+                   (map-indexed (partial fmt-license (->db deps) t))
+                   (interpose "\n")
+                   (apply str)))))))
+
+
+(defmethod dispatch/report ::report-untransitioned-licenses
+  [deps event {:keys [t] :as params}]
+  (let [licenses (licenses-without-transitions-ending-within (->db deps) t 31 45)]
+    (doseq [[property licenses] (group-by member-license/property licenses)]
+      (send-untransitioned-report deps t property licenses))))
+
+
+;; Member Renewal Reminders =====================================================
 
 
 (defmethod dispatch/job ::send-renewal-reminders
@@ -145,8 +206,9 @@
   (let [licenses (licenses-without-transitions-ending-in-days (->db deps) t 30)]
     (map
      (fn [license]
-       (event/job ::create-month-to-month-transition {:params {:license-id (td/id license)}
-                                                      :triggered-by      event}))
+       (event/job ::create-month-to-month-transition
+                  {:params       {:license-id (td/id license)}
+                   :triggered-by event}))
      licenses)))
 
 
