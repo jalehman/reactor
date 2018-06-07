@@ -150,6 +150,30 @@
      licenses)))
 
 
+;; deactivate old licenses ======================================================
+
+
+(defn- expired-licenses
+  [db as-of]
+  (d/q
+   '[:find [?l ...]
+     :in $ ?as-of
+     :where
+     [?l :member-license/status :member-license.status/active]
+     [?l :member-license/ends ?end-date]
+     [(.before ^java.util.Date ?end-date ?as-of)]]
+   db as-of))
+
+
+(defmethod dispatch/job ::deactivate-expired-licenses
+  [deps event {:keys [t] :as params}]
+  (let [license-ids (expired-licenses (->db deps) t)]
+    (map
+     (fn [license-id]
+       [:db/add license-id :member-license/status :member-license.status/inactive])
+     license-ids)))
+
+
 ;; ==============================================================================
 ;; First of Month ===============================================================
 ;; ==============================================================================
