@@ -174,6 +174,33 @@
      license-ids)))
 
 
+;; activate pending licenses ====================================================
+
+
+(defn- pending-licenses
+  [db as-of]
+  (let [start-of-day (date/beginning-of-day as-of)
+        end-of-day   (date/end-of-day as-of)]
+   (d/q
+    '[:find [?l ...]
+      :in $ ?sod ?eod
+      :where
+      [?l :member-license/status :member-license.status/pending]
+      [?l :member-license/commencement ?start-date]
+      [(.after ^java.util.Date ?start-date ?sod)]
+      [(.before ^java.util.Date ?start-date ?eod)]]
+    db start-of-day end-of-day)))
+
+
+(defmethod dispatch/job ::activate-pending-licenses
+  [deps event {:keys [t] :as params}]
+  (let [license-ids (pending-licenses (->db deps) t)]
+    (map
+     (fn [license-id]
+       [:db/add license-id :member-license/status :member-license.status/active])
+     license-ids)))
+
+
 ;; ==============================================================================
 ;; First of Month ===============================================================
 ;; ==============================================================================
