@@ -5,6 +5,8 @@
             [blueprints.models.license :as license]
             [blueprints.models.license-transition :as transition]
             [blueprints.models.member-license :as member-license]
+            [blueprints.models.order :as order]
+            [blueprints.models.property :as property]
             [blueprints.models.unit :as unit]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
@@ -15,6 +17,8 @@
             [markdown.core :as md]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
+            [reactor.services.slack :as slack]
+            [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
             [reactor.utils.tipe :as tipe]
             [teller.customer :as tcustomer]
@@ -25,10 +29,20 @@
             [teller.subscription :as tsubscription]
             [toolbelt.core :as tb]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]
-            [reactor.services.slack :as slack]
-            [blueprints.models.property :as property]
-            [reactor.services.slack.message :as sm]))
+            [toolbelt.datomic :as td]))
+
+;; ==============================================================================
+;; helpers ======================================================================
+;; ==============================================================================
+
+
+(defn- prorated-amount
+  [rate starts]
+  (let [starts         (c/to-date-time starts)
+        days-in-month  (t/day (t/last-day-of-the-month starts))
+        days-remaining (inc (- days-in-month (t/day starts)))]
+    (tb/round (* (/ rate days-in-month) days-remaining) 2)))
+
 
 ;; ==============================================================================
 ;; Daily ========================================================================
@@ -263,6 +277,96 @@
      license-ids)))
 
 
+;; deactivate helping hands subscriptions =======================================
+
+
+(defn- licenses-transferring-or-moving-out
+  "All licenses with move-out or transfer transitions coming up within the next 30
+  days."
+  [db as-of]
+  (let [as-of (c/to-date (t/plus (c/to-date-time as-of) (t/days 30)))]
+    (->> (d/q
+          '[:find [?l ...]
+            :in $ ?as-of
+            :where
+            [?l :member-license/status :member-license.status/active]
+            [?t :license-transition/current-license ?l]
+            [?t :license-transition/date ?date]
+            [(.before ^java.util.Date ?date ?as-of)]
+            (or [?t :license-transition/type :license-transition.type/inter-xfer]
+                [?t :license-transition/type :license-transition.type/intra-xfer]
+                [?t :license-transition/type :license-transition.type/move-out])]
+          db as-of)
+         (map (partial d/entity db)))))
+
+
+(defn- active-order-subs
+  [teller license]
+  (let [account  (member-license/account license)
+        customer (tcustomer/by-account teller account)]
+    (tsubscription/query teller {:customers     [customer]
+                                 :payment-types [:payment.type/order]})))
+
+
+;; TODO: Move to teller
+(defn- current-billing-date
+  "The billing date of `subscription` within the same month as `as-of`."
+  [subscription as-of]
+  (let [billing-start (c/to-date-time (tsubscription/billing-start subscription))
+        num-months    (-> billing-start
+                          ;; convert to end of month so that we get an accurate interval within the month
+                          (t/interval (c/to-date-time (date/end-of-month as-of)))
+                          (t/in-months))]
+    (c/to-date (t/plus billing-start (t/months num-months)))))
+
+
+(defn- tomorrow
+  [date]
+  (c/to-date (t/plus (c/to-date-time date) (t/days 1))))
+
+
+(defn- bills-tomorrow?
+  "Will `subscription` bill a day after `date`?"
+  [subscription date]
+  (let [billing-date (current-billing-date subscription date)
+        tomorrow     (tomorrow date)
+        from         (date/beginning-of-day tomorrow)
+        to           (date/end-of-day tomorrow)]
+    (t/within? (c/to-date-time from) (c/to-date-time to) (c/to-date-time billing-date))))
+
+
+(defmethod dispatch/job ::cancel-transitioning-subs
+  [deps event {:keys [t bill-to subscription-id] :as params}]
+  (let [subscription (tsubscription/by-id (->teller deps) subscription-id)
+        order        (order/by-subscription (->db deps) subscription)
+        amount       (prorated-amount (order/computed-price order) (tomorrow t))
+        payment      (tpayment/create! (tsubscription/customer subscription) amount :payment.type/order
+                                       {:property (tsubscription/property subscription)
+                                        :due      bill-to
+                                        :period   [(tomorrow t) bill-to]
+                                        :status   :payment.status/due})]
+    (tsubscription/cancel! subscription)
+    {:db/id          (td/id order)
+     :order/status   :order.status/canceled
+     :order/payments (td/id payment)}))
+
+
+(defmethod dispatch/job ::cancel-transitioning-orders
+  [deps event {:keys [t] :as params}]
+  (let [licenses    (licenses-transferring-or-moving-out (->db deps) t)
+        active-subs (->> (mapcat (partial active-order-subs (->teller deps)) licenses)
+                         (filter #(bills-tomorrow? % t)))]
+
+    (map
+     (fn [subs]
+       (let [license (->> (tsubscription/customer subs) tcustomer/account (member-license/active (->db deps)))]
+         (event/job ::cancel-transitioning-subs {:params       {:t               t
+                                                                :bill-to         (member-license/ends license)
+                                                                :subscription-id (tsubscription/id subs)}
+                                                 :triggered-by event})))
+     active-subs)))
+
+
 ;; ==============================================================================
 ;; First of Month ===============================================================
 ;; ==============================================================================
@@ -290,14 +394,6 @@
 
 
 ;; helpers ======================================================================
-
-
-(defn- prorated-amount
-  [rate starts]
-  (let [starts         (c/to-date-time starts)
-        days-in-month  (t/day (t/last-day-of-the-month starts))
-        days-remaining (inc (- days-in-month (t/day starts)))]
-    (tb/round (* (/ rate days-in-month) days-remaining) 2)))
 
 
 (defmethod dispatch/job ::create-prorated-payment
