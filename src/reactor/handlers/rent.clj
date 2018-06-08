@@ -86,8 +86,6 @@
 ;; first of the month. This event then spawns a new event for each member that
 ;; needs to have a rent payment generated for him/her.
 
-;;TODO - we need to change this query..........
-;;
 (defn active-licenses
   "Query all active licenses that have not yet commenced."
   [db period]
@@ -124,19 +122,11 @@
                              :datekey       :payment/pstart}))))
 
 
-(defn- has-transition?
-  [account]
-  ;;TODO - get current active license for account
-  ;; return true if :member-license/transition is not nil
-  )
-
-
 (defn- should-create-rent-payment?
   [teller account from]
   (let [from (c/to-date-time from)]
     (and
      (not (on-autopay? teller account))
-     ;;TODO - (not (has-transition? account))
      (has-no-current-rent-payment? teller account from))))
 
 
