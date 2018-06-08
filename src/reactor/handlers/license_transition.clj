@@ -181,6 +181,130 @@
                                     :triggered-by event})])
 
 
+;; Intra-community Transfer notifications =======================================
+
+
+(defmethod dispatch/report :transition/intra-xfer-created
+  [deps event {:keys [transition-uuid] :as params}]
+  (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
+        current-license (license-transition/current-license transition)
+        new-license     (license-transition/new-license transition)
+        member          (member-license/account current-license)
+        old-unit        (member-license/unit current-license)]
+
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :cahnnel (notification-channel (unit/property old-unit))}
+     (sm/msg
+      (sm/info
+       (sm/title (str (account/short-name member) " is transferring to a new unit!")
+                 (member-url (->dashboard-hostname deps) (td/id member)))
+       (sm/text "Learn more about this member's transfer in the Admin Dashboard.")
+       (sm/fields
+        (sm/field "Old Unit" (make-friendly-unit-name old-unit) true)
+        (sm/field "New Unit" (make-friendly-unit-name (member-license/unit new-license)) true)
+        (sm/field "New License Term" (member-license/term new-license) true)
+        (sm/field "New License Rate" (member-license/rate new-license) true)
+        (sm/field "Old Unit Move-out Date" (date/short (license-transition/date transition)) true)
+        (sm/field "New Unit Move-in Date" (date/short (member-license/commencement new-license)) true)))))))
+
+
+(defmethod dispatch/notify :transition/intra-xfer-created
+  [deps event {:keys [transition-uuid] :as params}]
+  (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
+        current-license (license-transition/current-license transition)
+        new-license     (license-transition/new-license transition)
+        member          (member-license/account current-license)
+        unit            (member-license/unit current-license)]
+    (mailer/send
+     (->mailer deps)
+     (account/email member)
+     (mail/subject (format "%s, your transfer has been approved!" (account/first-name member)))
+     (mm/msg
+      (mm/greet (account/first-name member))
+      (mm/p
+       (format "We've begun processing your transfer to %s! To ensure a smooth transfer, please read the following details about your transfer." (make-friendly-unit-name (member-license/unit new-license))))
+      (mm/p
+       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough. Also something about a security deposit and final walkthrough. This is not the official email!" (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
+      (mm/p
+       (format "You'll move in to %s and your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (make-friendly-unit-name (member-license/unit new-license)) (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
+      (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
+      (mm/sig))
+     {:uuid (event/uuid event)})))
+
+
+(defmethod dispatch/job :transition/intra-xfer-created
+  [deps event {:keys [transition-uuid] :as params}]
+  [(event/report (event/key event) {:params       {:transition-uuid transition-uuid}
+                                    :triggered-by event})
+   (event/notify (event/key event) {:params       {:transition-uuid transition-uuid}
+                                    :triggered-by event})])
+
+
+
+
+;; Inter-community Transfer notifications =======================================
+
+
+(defmethod dispatch/report :transition/inter-xfer-created
+  [deps event {:keys [transition-uuid] :as params}]
+  (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
+        current-license (license-transition/current-license transition)
+        new-license     (license-transition/new-license transition)
+        member          (member-license/account current-license)
+        old-unit        (member-license/unit current-license)]
+
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :cahnnel (notification-channel (unit/property old-unit))}
+     (sm/msg
+      (sm/info
+       (sm/title (str (account/short-name member) " is transferring to a new community!")
+                 (member-url (->dashboard-hostname deps) (td/id member)))
+       (sm/text "Learn more about this member's transfer in the Admin Dashboard.")
+       (sm/fields
+        (sm/field "Old Unit" (make-friendly-unit-name old-unit) true)
+        (sm/field "New Unit" (make-friendly-unit-name (member-license/unit new-license)) true)
+        (sm/field "New License Term" (member-license/term new-license) true)
+        (sm/field "New License Rate" (member-license/rate new-license) true)
+        (sm/field "Old Unit Move-out Date" (date/short (license-transition/date transition)) true)
+        (sm/field "New Unit Move-in Date" (date/short (member-license/commencement new-license)) true)))))))
+
+
+(defmethod dispatch/notify :transition/inter-xfer-created
+  [deps event {:keys [transition-uuid] :as params}]
+  (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
+        current-license (license-transition/current-license transition)
+        new-license     (license-transition/new-license transition)
+        member          (member-license/account current-license)
+        unit            (member-license/unit current-license)]
+    (mailer/send
+     (->mailer deps)
+     (account/email member)
+     (mail/subject (format "%s, your transfer has been approved!" (account/first-name member)))
+     (mm/msg
+      (mm/greet (account/first-name member))
+      (mm/p
+       (format "We've begun processing your transfer to %s! To ensure a smooth transfer, please read the following details about your transfer." (make-friendly-unit-name (member-license/unit new-license))))
+      (mm/p
+       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough. Also something about a security deposit and final walkthrough. This is not the official email!" (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
+      (mm/p
+       (format "You'll move in to %s and your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (make-friendly-unit-name (member-license/unit new-license)) (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
+      (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
+      (mm/sig))
+     {:uuid (event/uuid event)})))
+
+
+(defmethod dispatch/job :transition/inter-xfer-created
+  [deps event {:keys [transition-uuid] :as params}]
+  [(event/report (event/key event) {:params       {:transition-uuid transition-uuid}
+                                    :triggered-by event})
+   (event/notify (event/key event) {:params       {:transition-uuid transition-uuid}
+                                    :triggered-by event})])
+
+
 ;; Month-to-month transition notifications =======================================
 
 
