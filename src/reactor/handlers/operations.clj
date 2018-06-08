@@ -56,15 +56,25 @@
 
 
 (defmethod dispatch/job :ops/daily
-  [deps event params]
-  ;;TODO - dispatch an event that will
-  ;;   1. look for licenses ending on that day
-  ;;   2. deactivate those licenses
-  ;;   3. if any of the licenses have a "next license" attr, create/activate those new licenses
-  )
-
-
-
+  [deps event {:keys [t]}]
+  [(event/job ::report-untransitioned-licenses
+              {:params {:t t} :triggered-by event})
+   (event/job ::send-renewal-reminders
+              {:params       {:t        t
+                              :interval reminder-interval}
+               :triggered-by event})
+   (event/job ::create-month-to-month-renewals
+              {:params       {:t t}
+               :triggered-by event})
+   (event/job ::deactivate-expired-licenses
+              {:params       {:t t}
+               :triggered-by event})
+   (event/job ::activate-pending-licenses
+              {:params       {:t t}
+               :triggered-by event})
+   (event/job ::cancel-transitioning-orders
+              {:params       {:t t}
+               :triggered-by event})])
 
 
 ;; helpers ======================================================================
@@ -176,7 +186,7 @@
   (tb/transform-when-key-exists document
     {:body (fn [body]
              (-> (stache/render body {:name   (account/first-name account)
-                                   :ends   (date/short (member-license/ends license))
+                                      :ends   (date/short (member-license/ends license))
                                       :sender "Starcity Community"})
                  (md/md-to-html-string)))}))
 
@@ -570,9 +580,6 @@
                                         :triggered-by event})))))
 
 
-
-
-
 (defn- find-passive-renewal-licenses
   [db t]
   (d/q '[:find ?l
@@ -587,8 +594,9 @@
 
 (defmethod dispatch/job ::passive-renewals
   [deps event {:keys [t] :as params}]
-  (event/job ::active-renewals {:params                 {:t t}
+  (event/job ::active-renewals {:params       {:t t}
                                 :triggered-by event}))
+
 
 (defn- find-active-renewal-licenses
   [db t]
@@ -610,6 +618,8 @@
 
 
 ;; Deactivate Old Licenses ======================================================
+
+
 (defn- licenses-that-have-ended-before
   [db date]
   (->> (d/q '[:find [?l ...]
