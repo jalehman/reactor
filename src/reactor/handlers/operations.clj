@@ -384,8 +384,7 @@
 
 (defmethod dispatch/job :ops/first-of-month
   [deps event {:keys [t] :as params}]
-  (event/job ::passive-renewals {:params       {:t t}
-                                 :triggered-by event}))
+  (events/create-monthly-rent-payments t))
 
 
 ;; ==============================================================================
@@ -397,10 +396,12 @@
   [deps event {:keys [t] :as params}]
   (let [t      (c/to-date (t/plus (c/to-date-time t) (t/days 10)))
         period (date/beginning-of-month t)]
-    [(event/job ::deactivate-autopay-for-move-outs {:params       {:period period}
-                                                    :triggered-by event})
-     (event/job ::prepare-renewals {:params       {:period period}
-                                    :triggered-by event})]))
+    [(event/job ::deactivate-autopay-for-move-outs
+                {:params       {:period period}
+                 :triggered-by event})
+     (event/job ::migrate-transitions
+                {:params       {:period period}
+                 :triggered-by event})]))
 
 
 ;; helpers ======================================================================
@@ -410,8 +411,8 @@
   [deps event {:keys [transition-id] :as params}]
   (let [transition (d/entity (->db deps) transition-id)
         license    (transition/new-license transition)
-        starts     (member-license/starts license)
         tz         (member-license/time-zone license)
+        starts     (member-license/starts license)
         from       (date/beginning-of-day starts tz)
         to         (date/end-of-month starts tz)
         amount     (-> license member-license/rate (prorated-amount from))
@@ -511,7 +512,7 @@
                                        :triggered-by event}))))
 
 
-;; moveouts =============================
+;; moveouts =====================================================================
 
 
 (defn- is-transitioning-within-month? [period transition]
@@ -532,7 +533,7 @@
        (deactivate-autopay-events event)))
 
 
-;; prepare renewals =============================================================
+;; migrate transition ===========================================================
 
 
 (defn- ends-after-first-of-month? [period transition]
@@ -553,7 +554,7 @@
    (member-license/rate (transition/new-license transition))))
 
 
-(defmethod dispatch/job ::prepare-renewal
+(defmethod dispatch/job ::migrate-transition
   [deps event {:keys [period transition-id] :as params}]
   (let [transition (d/entity (->db deps) transition-id)]
     (cond-> []
@@ -570,62 +571,18 @@
                         :triggered-by event})))))
 
 
-(defmethod dispatch/job ::prepare-renewals
+;; migrate transitions ==========================================================
+
+
+(defmethod dispatch/job ::migrate-transitions
   [deps event {:keys [period] :as params}]
-  (->> (transition/by-type (->db deps) :license-transition.type/renewal)
-       (map
-        (fn [transition]
-          (event/job ::prepare-renewal {:params       {:period        period
+  (let [transitions (concat
+                     (transition/by-type (->db deps) :license-transition.type/renewal)
+                     (transition/by-type (->db deps) :license-transition.type/inter-xfer)
+                     (transition/by-type (->db deps) :license-transition.type/intra-xfer))]
+    (map
+     (fn [transition]
+       (event/job ::migrate-transition {:params       {:period        period
                                                        :transition-id (td/id transition)}
-                                        :triggered-by event})))))
-
-
-(defn- find-passive-renewal-licenses
-  [db t]
-  (d/q '[:find ?l
-         :in $ ?month
-         :where
-         [?l :member-license/ends ?term-end]
-         [(t/before? ?term-end (date/end-of-month ?month))]
-         [(t/after? ?term-end (date/beginning-of-month ?month))]
-         [(missing? $ ?l :member-license/transition)]]
-       db t))
-
-
-(defmethod dispatch/job ::passive-renewals
-  [deps event {:keys [t] :as params}]
-  (event/job ::active-renewals {:params       {:t t}
-                                :triggered-by event}))
-
-
-(defn- find-active-renewal-licenses
-  [db t]
-  (d/q '[:find ?l
-         :in $ ?month
-         :where
-         [?l :member-license/ends ?term-end]
-         [(t/before? ?term-end (date/end-of-month ?month))]
-         [(t/after? ?term-end (date/beginning-of-month ?month))]
-         [?l :member-license/transition ?transition]
-         [?transition :license-transition/type :license-transition.type/move-out]]
-       db t))
-
-
-
-(defmethod dispatch/job ::active-renewals
-  [deps event {:keys [t] :as params}]
-  (events/create-monthly-rent-payments t))
-
-
-;; Deactivate Old Licenses ======================================================
-
-
-(defn- licenses-that-have-ended-before
-  [db date]
-  (->> (d/q '[:find [?l ...]
-              :in $ ?date
-              :where
-              [?l :member-license/ends ?ends]
-              [(.after ^java.util.Date ?date ?ends)]]
-            db (c/to-date date))
-       (map (partial d/entity db))))
+                                        :triggered-by event}))
+     transitions)))
