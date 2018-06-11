@@ -1,5 +1,8 @@
 (ns reactor.scheduler
-  (:require [blueprints.models.events :as events]
+  (:require [blueprints.models.event :as event]
+            [blueprints.models.events :as events]
+            [clj-time.coerce :as c]
+            [clj-time.core :as t]
             [datomic.api :as d]
             [hara.io.scheduler :as sch]
             [mount.core :refer [defstate]]
@@ -9,16 +12,38 @@
             [taoensso.timbre :as timbre]
             [toolbelt.core :as tb]))
 
+(defn last-day-of-month?
+  [date]
+  (let [date' (c/to-date-time date)]
+    (not= (t/month date') (t/month (t/plus date' (t/days 1))))))
+
+
 (defn- create-scheduler [conn]
   (let [params {:conn conn}]
     (sch/scheduler
      (tb/assoc-when
-      {:create-rent-payments
+      ;; process any license transitions this month, then create rent payments as appropro
+      {:conduct-monthly-operations
        {:handler  (fn [t {conn :conn}]
-                    (d/transact-async conn [(events/create-monthly-rent-payments t)]))
+                    (d/transact-async conn [(event/job :ops/first-of-month {:params {:t t}})]))
         ;; first of every month
         :params   params
         :schedule "0 0 0 * 1 * *"}
+
+       :end-of-month-operations
+       {:handler (fn [t {conn :conn}]
+                   (when (last-day-of-month? t)
+                     (d/transact-async conn [(event/job :ops/end-of-month {:params {:t t}})])))
+        :params  params
+        :schedule "0 0 0 * 28-31 * *"}
+
+
+       :daily-operations
+       {:handler  (fn [t {conn :conn}]
+                    (d/transact-async conn [(event/job :ops/daily {:params {:t t}})]))
+        :params   params
+        ;; 9am every day
+        :schedule "0 0 0 * * * *"}
 
        :daily-events
        {:handler  (fn [t {conn :conn}]

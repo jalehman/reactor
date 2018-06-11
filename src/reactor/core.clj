@@ -52,6 +52,8 @@
                         :domain  (config/mailgun-domain config)}
    :slack              {:webhook-url (config/slack-webhook-url config)
                         :username    (config/slack-username config)}
+   :tipe               {:api-key    (config/tipe-api-key config)
+                        :org-secret (config/tipe-secret config)}
    :community-safety   {:api-key (config/community-safety-api-key config)}
    :public-hostname    (config/public-hostname config)
    :dashboard-hostname (config/dashboard-hostname config)})
@@ -61,10 +63,12 @@
   {:mailer             {:api-key (config/mailgun-api-key config)
                         :domain  (config/mailgun-domain config)
                         :sender  (config/mailgun-sender config)
-                        :send-to "josh@starcity.com"}
+                        :send-to "developers@starcity.com"}
    :slack              {:webhook-url (config/slack-webhook-url config)
                         :username    (config/slack-username config)
                         :channel     "#debug"}
+   :tipe               {:api-key    (config/tipe-api-key config)
+                        :org-secret (config/tipe-secret config)}
    :public-hostname    (config/public-hostname config)
    :dashboard-hostname (config/dashboard-hostname config)})
 
