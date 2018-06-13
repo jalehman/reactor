@@ -227,7 +227,7 @@
 
 (defmethod dispatch/job ::create-month-to-month-renewals
   [deps event {:keys [t] :as params}]
-  (let [licenses (licenses-without-transitions-ending-in-days (->db deps) t 30)]
+  (let [licenses (licenses-without-transitions-ending-within (->db deps) t 0 30)]
     (map
      (fn [license]
        (event/job ::create-month-to-month-transition

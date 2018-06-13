@@ -42,7 +42,7 @@
        {:handler  (fn [t {conn :conn}]
                     (d/transact-async conn [(event/job :ops/daily {:params {:t t}})]))
         :params   params
-        ;; 9am every day
+        ;; 12am every day
         :schedule "0 0 0 * * * *"}
 
        :daily-events
