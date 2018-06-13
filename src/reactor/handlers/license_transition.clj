@@ -224,27 +224,40 @@
         (sm/field "New Unit Move-in Date" (date/short (member-license/commencement new-license)) true)))))))
 
 
+(def intra-xfer-created-document-id
+  "The Tipe document id for the intra-xfer-created email template"
+  "5b2183eba83135001307db90")
+
+
+(defn prepare-intra-xfer-created-email
+  [document member unit new-license current-license]
+  (tb/transform-when-key-exists document
+    {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
+     :body (fn [body] (-> (stache/render body {:name (account/first-name member)
+                                               :new-unit (make-friendly-unit-name (member-license/unit new-license))
+                                               :old-unit (make-friendly-unit-name unit)
+                                               :move-out-date (date/short (member-license/ends current-license))
+                                               :move-in-date (date/short (member-license/starts new-license))
+                                               :term (str (member-license/term new-license))
+                                               :rate (str (member-license/rate new-license))})
+                          (md/md-to-html-string)))}))
+
+
+
 (defmethod dispatch/notify :transition/intra-xfer-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
         current-license (license-transition/current-license transition)
         new-license     (license-transition/new-license transition)
         member          (member-license/account current-license)
-        unit            (member-license/unit current-license)]
+        unit            (member-license/unit current-license)
+        document        (tipe/fetch-document (->tipe deps) intra-xfer-created-document-id)
+        content         (prepare-intra-xfer-created-email document member unit new-license current-license)]
     (mailer/send
      (->mailer deps)
      (account/email member)
-     (mail/subject (format "%s, your transfer has been approved!" (account/first-name member)))
-     (mm/msg
-      (mm/greet (account/first-name member))
-      (mm/p
-       (format "We've begun processing your transfer to %s! To ensure a smooth transfer, please read the following details about your transfer." (make-friendly-unit-name (member-license/unit new-license))))
-      (mm/p
-       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough. If you'd like to schedule this walkthrough, please reach out to your community representative." (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
-      (mm/p
-       (format "You'll move in to %s and your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (make-friendly-unit-name (member-license/unit new-license)) (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
-      (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
-      (mm/sig))
+     (mail/subject (:subject content))
+     (mm/msg (:body content))
      {:uuid (event/uuid event)})))
 
 
