@@ -227,7 +227,7 @@
       (mm/p
        (format "We've begun processing your transfer to %s! To ensure a smooth transfer, please read the following details about your transfer." (make-friendly-unit-name (member-license/unit new-license))))
       (mm/p
-       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough." (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
+       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough. If you'd like to schedule this walkthrough, please reach out to your community representative." (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
       (mm/p
        (format "You'll move in to %s and your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (make-friendly-unit-name (member-license/unit new-license)) (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
       (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
@@ -291,7 +291,7 @@
       (mm/p
        (format "We've begun processing your transfer to %s! To ensure a smooth transfer, please read the following details about your transfer." (make-friendly-unit-name (member-license/unit new-license))))
       (mm/p
-       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough. Also something about a security deposit and final walkthrough. This is not the official email!" (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
+       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough. If you'd like to schedule this walkthrough, please reach out to your community representative." (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
       (mm/p
        (format "You'll move in to %s and your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (make-friendly-unit-name (member-license/unit new-license)) (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
       (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
@@ -349,7 +349,7 @@
      (mm/msg
       (mm/greet (account/first-name member))
       (mm/p
-       "We haven't yet heard from you regarding your plans for the end of your current Starcity license. We require 30 days notice in any scenario. Since we're within 30 days of the end of your license but haven't received notice, we've renewed your license for a month-to-month term. HEY MARKETING/COMMUNITY YALL SHOULD PUNCH UP THIS EMAIL COPY AN ENGINEER WROTE IT AND ITS NOT GOOD!")
+       "We haven't yet heard from you regarding your plans for the end of your current Starcity license. We require 30 days notice in any scenario. Since we're within 30 days of the end of your license but haven't received notice, we've renewed your license for a month-to-month term.")
       (mm/p
        (format "Your new license will take effect on %s. This license is effective for a %s month term at a rate of %s/month. We will continue to roll your license over on a month-to-month basis until we've received your notice of intent to move out." (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
       (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
