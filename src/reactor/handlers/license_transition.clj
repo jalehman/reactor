@@ -4,18 +4,22 @@
             [blueprints.models.license-transition :as license-transition]
             [blueprints.models.unit :as unit]
             [blueprints.models.event :as event]
+            [clostache.parser :as stache]
             [datomic.api :as d]
             [mailer.core :as mailer]
             [mailer.message :as mm]
+            [markdown.core :as md]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
             [reactor.utils.mail :as mail]
+            [reactor.utils.tipe :as tipe]
             [toolbelt.datomic :as td]
             [toolbelt.date :as date]
             [taoensso.timbre :as timbre]
-            [blueprints.models.property :as property]))
+            [blueprints.models.property :as property]
+            [toolbelt.core :as tb]))
 
 
 (defn- member-url [hostname account-id]
@@ -151,27 +155,36 @@
         (sm/field "Renewal date" (date/short (license-transition/date transition)) true)))))))
 
 
+(def renewal-created-email-document-id
+  "The Tipe document id for the renewal-created email template"
+  "5b216e297ec99e0013175bbd")
+
+
+(defn prepare-renewal-created-email
+  [document account new-license]
+  (tb/transform-when-key-exists document
+    {:body (fn [body]
+             (-> (stache/render body {:name (account/first-name account)
+                                      :date (date/short (member-license/starts new-license))
+                                      :term (str (member-license/term new-license))
+                                      :rate (str (member-license/rate new-license))})
+                 (md/md-to-html-string)))}))
+
+
 (defmethod dispatch/notify :transition/renewal-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
         current-license (license-transition/current-license transition)
         new-license     (license-transition/new-license transition)
         member          (member-license/account current-license)
-        unit            (member-license/unit current-license)]
+        document        (tipe/fetch-document (->tipe deps) renewal-created-email-document-id)
+        content         (prepare-renewal-created-email document member new-license)]
     (mailer/send
      (->mailer deps)
      (account/email member)
-     (mail/subject (format "%s, your license has been renewed!" (account/first-name member)))
-     (mm/msg
-      (mm/greet (account/first-name member))
-      (mm/p
-       "Thank you for renewing your license with us!")
-      (mm/p
-       (format "Your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
-      (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
-      (mm/sig))
-     {:uuid (event/uuid event)})
-    ))
+     (mail/subject (:subject content))
+     (mm/msg (:body content))
+     {:uuuid (event/uuid event)})))
 
 
 (defmethod dispatch/job :transition/renewal-created
