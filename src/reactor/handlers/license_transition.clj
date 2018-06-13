@@ -70,26 +70,64 @@
           (sm/field "Asana Move-out Task" a true))))))))
 
 
+(def move-out-after-30-days-email-document-id
+  "The Tipe document id for the email sent to members who are moving out when
+  their move-out date is beyond 30 days from the date they gave notice"
+  "5b219382fbc48500130b9e56")
+
+
+(defn prepare-move-out-after-30-days-email
+  [document member admin transition]
+  (tb/transform-when-key-exists document
+    {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
+     :body (fn [body] (-> (stache/render body {:name (account/first-name member)
+                                              :community-team-member (account/first-name admin)
+                                              :move-out-date (date/short (license-transition/date transition))})
+                         (md/md-to-html-string)))}))
+
+
+(defn find-transition-creator
+  "Given an active license, provide the account of the admin who created said license."
+  [db license]
+  (->> (d/q '[:find ?creator .
+              :in $ ?member-license
+              :where
+              [?t :license-transition/current-license ?member-license ?tx]
+              [_ :source/account ?creator ?tx]]
+            db (td/id license))
+       (d/entity db)))
+
+
 ;; email notification -> member
 (defmethod dispatch/notify :transition/move-out-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition (license-transition/by-uuid (->db deps) transition-uuid)
         license    (license-transition/current-license transition)
-        member     (member-license/account license)]
+        member     (member-license/account license)
+        admin      (find-transition-creator (->db deps) license)
+        document   (tipe/fetch-document (->tipe deps) move-out-after-30-days-email-document-id)
+        content    (prepare-move-out-after-30-days-email document member admin transition)]
 
     (mailer/send
      (->mailer deps)
      (account/email member)
-     (mail/subject (format "%s, we've begun processing your move-out." (account/first-name member)))
-     (mm/msg
-      (mm/greet (account/first-name member))
-      (mm/p
-       "We've received your notice of intent to move out. We're sad to see you go!")
-      (mm/p
-       (format "We have your move-out day set for %s. If this is incorrect, please reach out to your community representative so we can adjust it." (date/short (license-transition/date transition))))
-      (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+     (mail/subject (:subject content))
+     (mm/msg (:body content))
+     {:uuuid (event/uuid event)})
+
+    #_(mailer/send
+       (->mailer deps)
+       (account/email member)
+       (mail/subject (format "%s, we've begun processing your move-out." (account/first-name member)))
+       (mm/msg
+        (mm/greet (account/first-name member))
+        (mm/p
+         "We've received your notice of intent to move out. We're sad to see you go!")
+        (mm/p
+         (format "We have your move-out day set for %s. If this is incorrect, please reach out to your community representative so we can adjust it." (date/short (license-transition/date transition))))
+        (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
+        (mm/sig))
+       {:uuid (event/uuid event)})))
 
 
 (defmethod dispatch/job :transition/move-out-created
@@ -234,13 +272,13 @@
   (tb/transform-when-key-exists document
     {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
      :body (fn [body] (-> (stache/render body {:name (account/first-name member)
-                                               :new-unit (make-friendly-unit-name (member-license/unit new-license))
-                                               :old-unit (make-friendly-unit-name unit)
-                                               :move-out-date (date/short (member-license/ends current-license))
-                                               :move-in-date (date/short (member-license/starts new-license))
-                                               :term (str (member-license/term new-license))
-                                               :rate (str (member-license/rate new-license))})
-                          (md/md-to-html-string)))}))
+                                              :new-unit (make-friendly-unit-name (member-license/unit new-license))
+                                              :old-unit (make-friendly-unit-name unit)
+                                              :move-out-date (date/short (member-license/ends current-license))
+                                              :move-in-date (date/short (member-license/starts new-license))
+                                              :term (str (member-license/term new-license))
+                                              :rate (str (member-license/rate new-license))})
+                         (md/md-to-html-string)))}))
 
 
 
@@ -370,27 +408,52 @@
         (sm/field "Renewal date" (date/short (license-transition/date transition)) true)))))))
 
 
-;; TODO
+(def month-to-month-created-document-id
+  "The Tipe document id for the month-to-month notice email"
+  "5b2185ce17bbd50013fce7fa")
+
+
+(defn prepare-month-to-month-created-email
+  [document account license]
+  (tb/transform-when-key-exists document
+    {:subject (fn [subject] (stache/render subject {:name (account/first-name account)}))
+     :body (fn [body] (-> (stache/render body {:name (account/first-name account)
+                                              :date (date/short (member-license/starts license))
+                                              :term (str (member-license/term license))
+                                              :rate (str (member-license/rate license))})
+                         (md/md-to-html-string)))}))
+
+
 (defmethod dispatch/notify :transition/month-to-month-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
         current-license (license-transition/current-license transition)
         new-license     (license-transition/new-license transition)
         member          (member-license/account current-license)
-        unit            (member-license/unit current-license)]
+        unit            (member-license/unit current-license)
+        document        (tipe/fetch-document (->tipe deps) month-to-month-created-document-id)
+        content         (prepare-month-to-month-created-email document member new-license)]
+
     (mailer/send
      (->mailer deps)
      (account/email member)
-     (mail/subject (format "%s, we've renewed your license." (account/first-name member)))
-     (mm/msg
-      (mm/greet (account/first-name member))
-      (mm/p
-       "We haven't yet heard from you regarding your plans for the end of your current Starcity license. We require 30 days notice in any scenario. Since we're within 30 days of the end of your license but haven't received notice, we've renewed your license for a month-to-month term.")
-      (mm/p
-       (format "Your new license will take effect on %s. This license is effective for a %s month term at a rate of %s/month. We will continue to roll your license over on a month-to-month basis until we've received your notice of intent to move out." (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
-      (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+     (mail/subject (:subject content))
+     (mm/msg (:body content))
+     {:uuid (event/uuid event)})
+
+    #_(mailer/send
+       (->mailer deps)
+       (account/email member)
+       (mail/subject (format "%s, we've renewed your license." (account/first-name member)))
+       (mm/msg
+        (mm/greet (account/first-name member))
+        (mm/p
+         "We haven't yet heard from you regarding your plans for the end of your current Starcity license. We require 30 days notice in any scenario. Since we're within 30 days of the end of your license but haven't received notice, we've renewed your license for a month-to-month term.")
+        (mm/p
+         (format "Your new license will take effect on %s. This license is effective for a %s month term at a rate of %s/month. We will continue to roll your license over on a month-to-month basis until we've received your notice of intent to move out." (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
+        (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
+        (mm/sig))
+       {:uuid (event/uuid event)})))
 
 (defmethod dispatch/job :transition/month-to-month-created
   [deps event {:keys [transition-uuid] :as params}]
