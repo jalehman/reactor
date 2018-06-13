@@ -122,6 +122,7 @@
 
 (defmethod dispatch/job :transition/move-out-updated
   [deps event {:keys [transition-id] :as params}]
+
   [(event/report (event/key event) {:params {:transition-id transition-id}
                                     :triggered-by event})])
 
@@ -226,7 +227,7 @@
       (mm/p
        (format "We've begun processing your transfer to %s! To ensure a smooth transfer, please read the following details about your transfer." (make-friendly-unit-name (member-license/unit new-license))))
       (mm/p
-       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough. Also something about a security deposit and final walkthrough. This is not the official email!" (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
+       (format "You'll move out of %s on %s. Before you move out, you have the option of scheduling a pre-departure walkthrough." (make-friendly-unit-name unit) (date/short (member-license/ends current-license))))
       (mm/p
        (format "You'll move in to %s and your new license will take effect on %s. You've committed to a %s month term at a rate of %s/month. If any of this information is incorrect, please reach out to your community representative so we can adjust it." (make-friendly-unit-name (member-license/unit new-license)) (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
       (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
@@ -273,6 +274,7 @@
         (sm/field "New Unit Move-in Date" (date/short (member-license/commencement new-license)) true)))))))
 
 
+;;TODO - fix this
 (defmethod dispatch/notify :transition/inter-xfer-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
@@ -332,6 +334,7 @@
         (sm/field "Renewal date" (date/short (license-transition/date transition)) true)))))))
 
 
+;; TODO
 (defmethod dispatch/notify :transition/month-to-month-created
   [deps event {:keys [transition-uuid] :as params}]
   (let [transition      (license-transition/by-uuid (->db deps) transition-uuid)
