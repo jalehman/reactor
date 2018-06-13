@@ -565,7 +565,11 @@
                                        :reactivate?   true}
                         :triggered-by event}))
 
-      (ends-after-first-of-month? period transition)
+      ;; Only create a second-half prorated payment if we're dealing with an
+      ;; inter-transfer (new building) or a rate change
+      (and (ends-after-first-of-month? period transition)
+           (or (= (transition/type transition) :license-transition.type/inter-xfer)
+               (has-new-rate? transition)))
       (conj (event/job ::create-prorated-payment
                        {:params       {:transition-id (td/id transition)}
                         :triggered-by event})))))
