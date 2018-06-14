@@ -81,12 +81,3 @@
                        :period          [start end]})))
     (bill-subscription! subs start end)
     nil))
-
-
-(comment
-
-  (def conn odin.datomic/conn)
-
-  @(d/transact conn [(event/job :teller/daily {:params {:t #inst "2018-06-14"}})])
-
-  )
