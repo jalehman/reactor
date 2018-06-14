@@ -76,6 +76,12 @@
   "5b219382fbc48500130b9e56")
 
 
+(def move-out-before-30-days-email-document-id
+  "The Tipe document id for the email set to members who are moving out when their
+  move-out date is within 30 days of the date they gave notice"
+  "5b216533401e390013aeeefa")
+
+
 (defn prepare-move-out-after-30-days-email
   [document member admin transition]
   (tb/transform-when-key-exists document
@@ -260,14 +266,14 @@
   [document member unit new-license current-license]
   (tb/transform-when-key-exists document
     {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-     :body (fn [body] (-> (stache/render body {:name (account/first-name member)
-                                              :new-unit (make-friendly-unit-name (member-license/unit new-license))
-                                              :old-unit (make-friendly-unit-name unit)
-                                              :move-out-date (date/short (member-license/ends current-license))
-                                              :move-in-date (date/short (member-license/starts new-license))
-                                              :term (str (member-license/term new-license))
-                                              :rate (str (member-license/rate new-license))})
-                         (md/md-to-html-string)))}))
+     :body    (fn [body] (-> (stache/render body {:name          (account/first-name member)
+                                                 :new-unit      (make-friendly-unit-name (member-license/unit new-license))
+                                                 :old-unit      (make-friendly-unit-name unit)
+                                                 :move-out-date (date/short (member-license/ends current-license))
+                                                 :move-in-date  (date/short (member-license/starts new-license))
+                                                 :term          (str (member-license/term new-license))
+                                                 :rate          (str (member-license/rate new-license))})
+                            (md/md-to-html-string)))}))
 
 
 
@@ -428,21 +434,7 @@
      (account/email member)
      (mail/subject (:subject content))
      (mm/msg (:body content))
-     {:uuid (event/uuid event)})
-
-    #_(mailer/send
-       (->mailer deps)
-       (account/email member)
-       (mail/subject (format "%s, we've renewed your license." (account/first-name member)))
-       (mm/msg
-        (mm/greet (account/first-name member))
-        (mm/p
-         "We haven't yet heard from you regarding your plans for the end of your current Starcity license. We require 30 days notice in any scenario. Since we're within 30 days of the end of your license but haven't received notice, we've renewed your license for a month-to-month term.")
-        (mm/p
-         (format "Your new license will take effect on %s. This license is effective for a %s month term at a rate of %s/month. We will continue to roll your license over on a month-to-month basis until we've received your notice of intent to move out." (date/short (member-license/starts new-license)) (member-license/term new-license) (member-license/rate new-license)))
-        (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
-        (mm/sig))
-       {:uuid (event/uuid event)})))
+     {:uuid (event/uuid event)})))
 
 (defmethod dispatch/job :transition/month-to-month-created
   [deps event {:keys [transition-uuid] :as params}]
