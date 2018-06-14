@@ -36,6 +36,12 @@
     (str property " #" unit-number)))
 
 
+(defn format-date
+  "Accepts a date and a time zone, returns a short-formatted, time-zone-corrected date."
+  [date tz]
+  (date/short (date/tz-uncorrected date tz)))
+
+
 (def ^:private property-channel
   {"52gilbert"   "#52-gilbert"
    "2072mission" "#2072-mission"
@@ -54,8 +60,8 @@
   (let [transition (license-transition/by-uuid (->db deps) transition-uuid)
         license    (license-transition/current-license transition)
         member     (member-license/account license)
-        unit       (member-license/unit license)]
-
+        unit       (member-license/unit license)
+        tz         (member-license/time-zone license)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -67,7 +73,7 @@
        (sm/text "Learn more about this member's move out in the Admin Dashboard.")
        (sm/fields
         (sm/field "Unit" (make-friendly-unit-name unit) true)
-        (sm/field "Move-out date" (date/short (license-transition/date transition)) true)
+        (sm/field "Move-out date" (format-date (license-transition/date transition) tz) true)
         (when-let [a (:asana/task transition)]
           (sm/field "Asana Move-out Task" a true))))))))
 
@@ -86,12 +92,14 @@
 
 (defn prepare-move-out-after-30-days-email
   [document member admin transition]
-  (tb/transform-when-key-exists document
-    {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-     :body    (fn [body] (-> (stache/render body {:name                  (account/first-name member)
-                                                 :community-team-member (account/first-name admin)
-                                                 :move-out-date         (date/short (license-transition/date transition))})
-                            (md/md-to-html-string)))}))
+  (let [license (license-transition/current-license transition)
+        tz      (member-license/time-zone license)]
+    (tb/transform-when-key-exists document
+      {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
+       :body    (fn [body] (-> (stache/render body {:name                  (account/first-name member)
+                                                   :community-team-member (account/first-name admin)
+                                                   :move-out-date         (format-date (license-transition/date transition) tz)})
+                              (md/md-to-html-string)))})))
 
 (defn thirty-days-after-notice
   [transition]
@@ -103,16 +111,19 @@
 
 (defn prepare-move-out-before-30-days-email
   [document member admin transition]
-  (let [license (license-transition/current-license transition)
-        tz      (member-license/time-zone license)]
+  (let [license     (license-transition/current-license transition)
+        tz          (member-license/time-zone license)
+        notice-date (license-transition/notice-date transition)]
+    (timbre/info "\n\n---------- tz/corrected:" (date/short (date/tz-corrected notice-date tz)))
+    (timbre/info "\n\n---------- tz/uncorrected:" (date/short (date/tz-uncorrected notice-date tz)))
     (tb/transform-when-key-exists document
       {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
        :body    (fn [body] (-> (stache/render
                                body {:name                  (account/first-name member)
                                      :community-team-member (account/first-name admin)
-                                     :move-out-date         (date/short (date/tz-corrected (license-transition/date transition) tz))
-                                     :notice-date           (date/short (date/tz-corrected (license-transition/notice-date transition) tz))
-                                     :notice-date-plus-30   (date/short (date/tz-corrected (thirty-days-after-notice transition) tz))})
+                                     :move-out-date         (format-date (license-transition/date transition) tz)
+                                     :notice-date           (format-date (license-transition/notice-date transition) tz)
+                                     :notice-date-plus-30   (format-date (thirty-days-after-notice transition) tz)})
                               (md/md-to-html-string)))})))
 
 
@@ -170,12 +181,12 @@
 
 
 (defmethod dispatch/report :transition/move-out-updated
-  [deps event {:keys [transition-id]  :as params}]
+  [deps event {:keys [transition-id] :as params}]
   (let [transition (d/entity (->db deps) transition-id)
         license    (license-transition/current-license transition)
         member     (member-license/account license)
-        unit       (member-license/unit license)]
-
+        unit       (member-license/unit license)
+        tz         (member-license/time-zone license)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -187,7 +198,7 @@
        (sm/text "Learn more about this member's move out in the Admin Dashboard.")
        (sm/fields
         (sm/field "Unit" (make-friendly-unit-name unit) true)
-        (sm/field "Move-out date" (date/short (license-transition/date transition)) true)
+        (sm/field "Move-out date" (format-date (license-transition/date transition) tz) true)
         (when-let [a (:asana/task transition)]
           (sm/field "Asana Move-out Task" a true))))))))
 
@@ -205,8 +216,8 @@
         current-license (license-transition/current-license transition)
         new-license     (license-transition/new-license transition)
         member          (member-license/account current-license)
-        unit            (member-license/unit current-license)]
-
+        unit            (member-license/unit current-license)
+        tz              (member-license/time-zone current-license)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -220,7 +231,7 @@
         (sm/field "Unit" (make-friendly-unit-name unit) true)
         (sm/field "New License Term" (member-license/term new-license) true)
         (sm/field "New License Rate" (member-license/rate new-license) true)
-        (sm/field "Renewal date" (date/short (license-transition/date transition)) true)))))))
+        (sm/field "Renewal date" (format-date (license-transition/date transition) tz) true)))))))
 
 
 (def renewal-created-email-document-id
@@ -230,13 +241,14 @@
 
 (defn prepare-renewal-created-email
   [document account new-license]
-  (tb/transform-when-key-exists document
-    {:body (fn [body]
-             (-> (stache/render body {:name (account/first-name account)
-                                      :date (date/short (member-license/starts new-license))
-                                      :term (str (member-license/term new-license))
-                                      :rate (str (member-license/rate new-license))})
-                 (md/md-to-html-string)))}))
+  (let [tz (member-license/time-zone new-license)]
+    (tb/transform-when-key-exists document
+      {:body (fn [body]
+               (-> (stache/render body {:name (account/first-name account)
+                                        :date (format-date (member-license/starts new-license) tz)
+                                        :term (str (member-license/term new-license))
+                                        :rate (str (member-license/rate new-license))})
+                   (md/md-to-html-string)))})))
 
 
 (defmethod dispatch/notify :transition/renewal-created
@@ -272,7 +284,8 @@
         current-license (license-transition/current-license transition)
         new-license     (license-transition/new-license transition)
         member          (member-license/account current-license)
-        old-unit        (member-license/unit current-license)]
+        old-unit        (member-license/unit current-license)
+        tz              (member-license/time-zone current-license)]
 
     (slack/send
      (->slack deps)
@@ -288,8 +301,8 @@
         (sm/field "New Unit" (make-friendly-unit-name (member-license/unit new-license)) true)
         (sm/field "New License Term" (member-license/term new-license) true)
         (sm/field "New License Rate" (member-license/rate new-license) true)
-        (sm/field "Old Unit Move-out Date" (date/short (license-transition/date transition)) true)
-        (sm/field "New Unit Move-in Date" (date/short (member-license/commencement new-license)) true)))))))
+        (sm/field "Old Unit Move-out Date" (format-date (license-transition/date transition) tz) true)
+        (sm/field "New Unit Move-in Date" (format-date (member-license/commencement new-license) tz) true)))))))
 
 
 (def intra-xfer-created-document-id
@@ -299,16 +312,17 @@
 
 (defn prepare-intra-xfer-created-email
   [document member unit new-license current-license]
-  (tb/transform-when-key-exists document
-    {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-     :body    (fn [body] (-> (stache/render body {:name          (account/first-name member)
-                                                 :new-unit      (make-friendly-unit-name (member-license/unit new-license))
-                                                 :old-unit      (make-friendly-unit-name unit)
-                                                 :move-out-date (date/short (member-license/ends current-license))
-                                                 :move-in-date  (date/short (member-license/starts new-license))
-                                                 :term          (str (member-license/term new-license))
-                                                 :rate          (str (member-license/rate new-license))})
-                            (md/md-to-html-string)))}))
+  (let [tz (member-license/time-zone current-license)]
+    (tb/transform-when-key-exists document
+      {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
+       :body    (fn [body] (-> (stache/render body {:name          (account/first-name member)
+                                                   :new-unit      (make-friendly-unit-name (member-license/unit new-license))
+                                                   :old-unit      (make-friendly-unit-name unit)
+                                                   :move-out-date (format-date (member-license/ends current-license) tz)
+                                                   :move-in-date  (format-date (member-license/starts new-license) tz)
+                                                   :term          (str (member-license/term new-license))
+                                                   :rate          (str (member-license/rate new-license))})
+                              (md/md-to-html-string)))})))
 
 
 
@@ -348,7 +362,8 @@
         current-license (license-transition/current-license transition)
         new-license     (license-transition/new-license transition)
         member          (member-license/account current-license)
-        old-unit        (member-license/unit current-license)]
+        old-unit        (member-license/unit current-license)
+        tz              (member-license/time-zone current-license)]
 
     (slack/send
      (->slack deps)
@@ -364,8 +379,8 @@
         (sm/field "New Unit" (make-friendly-unit-name (member-license/unit new-license)) true)
         (sm/field "New License Term" (member-license/term new-license) true)
         (sm/field "New License Rate" (member-license/rate new-license) true)
-        (sm/field "Old Unit Move-out Date" (date/short (license-transition/date transition)) true)
-        (sm/field "New Unit Move-in Date" (date/short (member-license/commencement new-license)) true)))))))
+        (sm/field "Old Unit Move-out Date" (format-date (license-transition/date transition) tz) true)
+        (sm/field "New Unit Move-in Date" (format-date (member-license/commencement new-license) tz) true)))))))
 
 
 (def inter-xfer-created-document-id
@@ -374,16 +389,17 @@
 
 (defn prepare-inter-xfer-created-email
   [document member unit new-license current-license]
-  (tb/transform-when-key-exists document
-    {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-     :body    (fn [body] (-> (stache/render body {:name          (account/first-name member)
-                                                 :new-unit      (make-friendly-unit-name (member-license/unit new-license))
-                                                 :old-unit      (make-friendly-unit-name unit)
-                                                 :move-out-date (date/short (member-license/ends current-license))
-                                                 :move-in-date  (date/short (member-license/starts new-license))
-                                                 :term          (str (member-license/term new-license))
-                                                 :rate          (str (member-license/rate new-license))})
-                            (md/md-to-html-string)))}))
+  (let [tz (member-license/time-zone current-license)]
+    (tb/transform-when-key-exists document
+      {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
+       :body    (fn [body] (-> (stache/render body {:name          (account/first-name member)
+                                                   :new-unit      (make-friendly-unit-name (member-license/unit new-license))
+                                                   :old-unit      (make-friendly-unit-name unit)
+                                                   :move-out-date (format-date (member-license/ends current-license) tz)
+                                                   :move-in-date  (format-date (member-license/starts new-license) tz)
+                                                   :term          (str (member-license/term new-license))
+                                                   :rate          (str (member-license/rate new-license))})
+                              (md/md-to-html-string)))})))
 
 
 (defmethod dispatch/notify :transition/inter-xfer-created
@@ -420,7 +436,8 @@
         current-license (license-transition/current-license transition)
         new-license     (license-transition/new-license transition)
         member          (member-license/account current-license)
-        unit            (member-license/unit current-license)]
+        unit            (member-license/unit current-license)
+        tz              (member-license/time-zone current-license)]
 
     (slack/send
      (->slack deps)
@@ -435,7 +452,7 @@
         (sm/field "Unit" (make-friendly-unit-name unit) true)
         (sm/field "New License Term" (member-license/term new-license) true)
         (sm/field "New License Rate" (member-license/rate new-license) true)
-        (sm/field "Renewal date" (date/short (license-transition/date transition)) true)))))))
+        (sm/field "Renewal date" (format-date (license-transition/date transition) tz) true)))))))
 
 
 (def month-to-month-created-document-id
@@ -445,13 +462,14 @@
 
 (defn prepare-month-to-month-created-email
   [document account license]
-  (tb/transform-when-key-exists document
-    {:subject (fn [subject] (stache/render subject {:name (account/first-name account)}))
-     :body (fn [body] (-> (stache/render body {:name (account/first-name account)
-                                              :date (date/short (member-license/starts license))
-                                              :term (str (member-license/term license))
-                                              :rate (str (member-license/rate license))})
-                         (md/md-to-html-string)))}))
+  (let [tz (member-license/time-zone license)]
+    (tb/transform-when-key-exists document
+      {:subject (fn [subject] (stache/render subject {:name (account/first-name account)}))
+       :body    (fn [body] (-> (stache/render body {:name (account/first-name account)
+                                                   :date (format-date (member-license/starts license) tz)
+                                                   :term (str (member-license/term license))
+                                                   :rate (str (member-license/rate license))})
+                              (md/md-to-html-string)))})))
 
 
 (defmethod dispatch/notify :transition/month-to-month-created
