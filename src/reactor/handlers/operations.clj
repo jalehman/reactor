@@ -318,18 +318,6 @@
                                  :payment-types [:payment.type/order]})))
 
 
-;; TODO: Move to teller
-(defn- current-billing-date
-  "The billing date of `subscription` within the same month as `as-of`."
-  [subscription as-of]
-  (let [billing-start (c/to-date-time (tsubscription/billing-start subscription))
-        num-months    (-> billing-start
-                          ;; convert to end of month so that we get an accurate interval within the month
-                          (t/interval (c/to-date-time (date/end-of-month as-of)))
-                          (t/in-months))]
-    (c/to-date (t/plus billing-start (t/months num-months)))))
-
-
 (defn- tomorrow
   [date]
   (c/to-date (t/plus (c/to-date-time date) (t/days 1))))
@@ -338,7 +326,7 @@
 (defn- bills-tomorrow?
   "Will `subscription` bill a day after `date`?"
   [subscription date]
-  (let [billing-date (current-billing-date subscription date)
+  (let [billing-date (tsubscription/current-billing-date subscription date)
         tomorrow     (tomorrow date)
         from         (date/beginning-of-day tomorrow)
         to           (date/end-of-day tomorrow)]
