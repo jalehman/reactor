@@ -82,7 +82,8 @@
     {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
      :body (fn [body] (-> (stache/render body {:name (account/first-name member)
                                               :community-team-member (account/first-name admin)
-                                              :move-out-date (date/short (license-transition/date transition))})
+                                              :move-out-date (date/short (license-transition/date transition))
+                                              :notice-date (date/short (license-transition/notice-date transition))})
                          (md/md-to-html-string)))}))
 
 
@@ -101,33 +102,21 @@
 ;; email notification -> member
 (defmethod dispatch/notify :transition/move-out-created
   [deps event {:keys [transition-uuid] :as params}]
-  (let [transition (license-transition/by-uuid (->db deps) transition-uuid)
-        license    (license-transition/current-license transition)
-        member     (member-license/account license)
-        admin      (find-transition-creator (->db deps) license)
-        document   (tipe/fetch-document (->tipe deps) move-out-after-30-days-email-document-id)
-        content    (prepare-move-out-after-30-days-email document member admin transition)]
-
+  (let [transition  (license-transition/by-uuid (->db deps) transition-uuid)
+        license     (license-transition/current-license transition)
+        member      (member-license/account license)
+        admin       (find-transition-creator (->db deps) license)
+        admin-email (account/email admin)
+        document    (tipe/fetch-document (->tipe deps) move-out-after-30-days-email-document-id)
+        content     (prepare-move-out-after-30-days-email document member admin transition)]
     (mailer/send
      (->mailer deps)
      (account/email member)
      (mail/subject (:subject content))
      (mm/msg (:body content))
-     {:uuuid (event/uuid event)})
-
-    #_(mailer/send
-       (->mailer deps)
-       (account/email member)
-       (mail/subject (format "%s, we've begun processing your move-out." (account/first-name member)))
-       (mm/msg
-        (mm/greet (account/first-name member))
-        (mm/p
-         "We've received your notice of intent to move out. We're sad to see you go!")
-        (mm/p
-         (format "We have your move-out day set for %s. If this is incorrect, please reach out to your community representative so we can adjust it." (date/short (license-transition/date transition))))
-        (mm/p "If you have any questions, please don't hesitate to ask your community representative.")
-        (mm/sig))
-       {:uuid (event/uuid event)})))
+     (tb/assoc-when
+      {:uuuid (event/uuid event)}
+      :cc (when (not= admin-email "admin@test.com") admin-email)))))
 
 
 (defmethod dispatch/job :transition/move-out-created

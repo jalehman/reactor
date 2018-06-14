@@ -81,4 +81,16 @@
                                  :schedule "0 0 9 * * * *"}})
                   {:start t1 :end t2}))
 
+
+  (let [t1 #inst "2018-08-05"
+        t2 #inst "2018-08-06"]
+    (sch/simulate (sch/scheduler
+                   {:print-task {:handler  (fn [t] (println "TIME:" t))
+                                 :schedule "0 0 9 * * * *"}
+                    :do-daily-ops {:handler (fn [t {conn :conn}]
+                                              (d/transact-async conn [(event/job :ops/daily {:params {:t t}})]))
+                                   :schedule "0 0 0 * * * *"}})
+                  {:start t1 :end t2}))
+
+
   )
