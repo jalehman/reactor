@@ -19,7 +19,9 @@
             [toolbelt.date :as date]
             [taoensso.timbre :as timbre]
             [blueprints.models.property :as property]
-            [toolbelt.core :as tb]))
+            [toolbelt.core :as tb]
+            [clj-time.core :as t]
+            [clj-time.coerce :as c]))
 
 
 (defn- member-url [hostname account-id]
@@ -86,11 +88,32 @@
   [document member admin transition]
   (tb/transform-when-key-exists document
     {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-     :body (fn [body] (-> (stache/render body {:name (account/first-name member)
-                                              :community-team-member (account/first-name admin)
-                                              :move-out-date (date/short (license-transition/date transition))
-                                              :notice-date (date/short (license-transition/notice-date transition))})
-                         (md/md-to-html-string)))}))
+     :body    (fn [body] (-> (stache/render body {:name                  (account/first-name member)
+                                                 :community-team-member (account/first-name admin)
+                                                 :move-out-date         (date/short (license-transition/date transition))})
+                            (md/md-to-html-string)))}))
+
+(defn thirty-days-after-notice
+  [transition]
+  (-> (license-transition/notice-date transition)
+      (c/to-date-time)
+      (t/plus (t/days 30))
+      (c/to-date)))
+
+
+(defn prepare-move-out-before-30-days-email
+  [document member admin transition]
+  (let [license (license-transition/current-license transition)
+        tz      (member-license/time-zone license)]
+    (tb/transform-when-key-exists document
+      {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
+       :body    (fn [body] (-> (stache/render
+                               body {:name                  (account/first-name member)
+                                     :community-team-member (account/first-name admin)
+                                     :move-out-date         (date/short (date/tz-corrected (license-transition/date transition) tz))
+                                     :notice-date           (date/short (date/tz-corrected (license-transition/notice-date transition) tz))
+                                     :notice-date-plus-30   (date/short (date/tz-corrected (thirty-days-after-notice transition) tz))})
+                              (md/md-to-html-string)))})))
 
 
 (defn find-transition-creator
@@ -105,6 +128,14 @@
        (d/entity db)))
 
 
+(defn moveout-within-30-days-notice?
+  [transition]
+  (let [notice-date   (license-transition/notice-date transition)
+        move-out-date (license-transition/date transition)
+        interval      (t/in-days (t/interval (c/to-date-time notice-date) (c/to-date-time move-out-date)))]
+    (< interval 30)))
+
+
 ;; email notification -> member
 (defmethod dispatch/notify :transition/move-out-created
   [deps event {:keys [transition-uuid] :as params}]
@@ -113,8 +144,12 @@
         member      (member-license/account license)
         admin       (find-transition-creator (->db deps) license)
         admin-email (account/email admin)
-        document    (tipe/fetch-document (->tipe deps) move-out-after-30-days-email-document-id)
-        content     (prepare-move-out-after-30-days-email document member admin transition)]
+        document    (tipe/fetch-document (->tipe deps) (if (moveout-within-30-days-notice? transition)
+                                                         move-out-before-30-days-email-document-id
+                                                         move-out-after-30-days-email-document-id))
+        content     (if (moveout-within-30-days-notice? transition)
+                      (prepare-move-out-before-30-days-email document member admin transition)
+                      (prepare-move-out-after-30-days-email document member admin transition))]
     (mailer/send
      (->mailer deps)
      (account/email member)
