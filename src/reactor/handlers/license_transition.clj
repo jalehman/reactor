@@ -17,7 +17,6 @@
             [reactor.utils.tipe :as tipe]
             [toolbelt.datomic :as td]
             [toolbelt.date :as date]
-            [taoensso.timbre :as timbre]
             [blueprints.models.property :as property]
             [toolbelt.core :as tb]
             [clj-time.core :as t]
@@ -114,8 +113,6 @@
   (let [license     (license-transition/current-license transition)
         tz          (member-license/time-zone license)
         notice-date (license-transition/notice-date transition)]
-    (timbre/info "\n\n---------- tz/corrected:" (date/short (date/tz-corrected notice-date tz)))
-    (timbre/info "\n\n---------- tz/uncorrected:" (date/short (date/tz-uncorrected notice-date tz)))
     (tb/transform-when-key-exists document
       {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
        :body    (fn [body] (-> (stache/render
