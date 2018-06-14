@@ -156,7 +156,7 @@
      (mail/subject (:subject content))
      (mm/msg (:body content))
      (tb/assoc-when
-      {:uuuid (event/uuid event)}
+      {:uuid (event/uuid event)}
       :cc (when (not= admin-email "admin@test.com") admin-email)))))
 
 
@@ -252,7 +252,7 @@
      (account/email member)
      (mail/subject (:subject content))
      (mm/msg (:body content))
-     {:uuuid (event/uuid event)})))
+     {:uuid (event/uuid event)})))
 
 
 (defmethod dispatch/job :transition/renewal-created
