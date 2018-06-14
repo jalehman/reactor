@@ -1,16 +1,14 @@
 (ns reactor.handlers.teller
-  (:require [reactor.dispatch :as dispatch]
+  (:require [blueprints.models.event :as event]
+            [clj-time.coerce :as c]
+            [clj-time.core :as t]
+            [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
-            [teller.subscription :as tsubscription]
-            [toolbelt.date :as date]
-            [blueprints.models.event :as event]
             [teller.payment :as tpayment]
             [teller.plan :as tplan]
-            [clj-time.core :as t]
-            [clj-time.coerce :as c]
             [teller.property :as tproperty]
-            [datomic.api :as d]))
-
+            [teller.subscription :as tsubscription]
+            [toolbelt.date :as date]))
 
 (defmethod dispatch/job :teller/daily
   [deps event params]
