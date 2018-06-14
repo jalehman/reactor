@@ -376,14 +376,14 @@
   [document member unit new-license current-license]
   (tb/transform-when-key-exists document
     {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-     :body (fn [body] (-> (stache/render body {:name (account/first-name member)
-                                              :new-unit (make-friendly-unit-name (member-license/unit new-license))
-                                              :old-unit (make-friendly-unit-name unit)
-                                              :move-out-date (date/short (member-license/ends current-license))
-                                              :move-in-date (date/short (member-license/starts new-license))
-                                              :term (str (member-license/term new-license))
-                                              :rate (str (member-license/rate new-license))})
-                         (md/md-to-html-string)))}))
+     :body    (fn [body] (-> (stache/render body {:name          (account/first-name member)
+                                                 :new-unit      (make-friendly-unit-name (member-license/unit new-license))
+                                                 :old-unit      (make-friendly-unit-name unit)
+                                                 :move-out-date (date/short (member-license/ends current-license))
+                                                 :move-in-date  (date/short (member-license/starts new-license))
+                                                 :term          (str (member-license/term new-license))
+                                                 :rate          (str (member-license/rate new-license))})
+                            (md/md-to-html-string)))}))
 
 
 (defmethod dispatch/notify :transition/inter-xfer-created
