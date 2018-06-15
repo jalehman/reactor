@@ -218,7 +218,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :cahnnel (notification-channel (unit/property unit))}
+      :channel (notification-channel (unit/property unit))}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " has renewed their license!")
