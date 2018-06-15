@@ -213,7 +213,7 @@
   [deps event {:keys [license-id days]}]
   (let [license     (d/entity (->db deps) license-id)
         account     (member-license/account license)
-        document-id (get-renewal-reminder-email-document-id)
+        document-id (get-renewal-reminder-email-document-id license)
         document    (tipe/fetch-document (->tipe deps) document-id)
         content     (prepare-renewal-email document account license)]
     (mailer/send
