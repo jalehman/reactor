@@ -10,7 +10,7 @@
                  [org.clojure/tools.namespace "0.2.11"]
                  ;; db
                  [starcity/blueprints "2.6.2" :exclusions [com.datomic/datomic-free]]
-                 [starcity/teller "1.2.2"]
+                 [starcity/teller "1.2.4"]
                  ;; services
                  [starcity/stripe-clj "0.3.3"]
                  [starcity/mailer "0.4.0"]
