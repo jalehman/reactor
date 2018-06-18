@@ -12,6 +12,11 @@
   (mm/sig "Starcity Accounting"))
 
 
+(def community-address
+  "The community@ address (bcc'd on all automated messages)"
+  "community@starcity.com")
+
+
 (def from-community
   "Community from address."
   "Starcity Community Team <community@starcity.com>")
