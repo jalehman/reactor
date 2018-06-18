@@ -162,9 +162,10 @@
      (->mailer deps)
      (account/email member)
      (mail/subject (:subject content))
-     (mm/msg (:body content))
+     (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
      (tb/assoc-when
-      {:uuid (event/uuid event)}
+      {:uuid (event/uuid event)
+       :from (or (:from content) (mail/from-noreply))}
       :cc (when (not= admin-email "admin@test.com") admin-email)))))
 
 
@@ -218,7 +219,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :cahnnel (notification-channel (unit/property unit))}
+      :channel (notification-channel (unit/property unit))}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " has renewed their license!")
@@ -260,8 +261,9 @@
      (->mailer deps)
      (account/email member)
      (mail/subject (:subject content))
-     (mm/msg (:body content))
-     {:uuid (event/uuid event)})))
+     (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
+     {:uuid (event/uuid event)
+      :from (or (:from content) (mail/from-noreply))})))
 
 
 (defmethod dispatch/job :transition/renewal-created
@@ -287,7 +289,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :cahnnel (notification-channel (unit/property old-unit))}
+      :channel (notification-channel (unit/property old-unit))}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " is transferring to a new unit!")
@@ -302,6 +304,14 @@
         (sm/field "New Unit Move-in Date" (format-date (member-license/commencement new-license) tz) true)))))))
 
 
+(defn get-rate-difference
+  "Takes the difference between a new rate and an old rate; provides zero for negative differences."
+  [old-rate new-rate]
+  (let [diff (- new-rate old-rate)]
+    (if (neg? diff)
+      0
+      diff)))
+
 (def intra-xfer-created-document-id
   "The Tipe document id for the intra-xfer-created email template"
   "5b2183eba83135001307db90")
@@ -312,13 +322,14 @@
   (let [tz (member-license/time-zone current-license)]
     (tb/transform-when-key-exists document
       {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-       :body    (fn [body] (-> (stache/render body {:name          (account/first-name member)
-                                                   :new-unit      (make-friendly-unit-name (member-license/unit new-license))
-                                                   :old-unit      (make-friendly-unit-name unit)
-                                                   :move-out-date (format-date (member-license/ends current-license) tz)
-                                                   :move-in-date  (format-date (member-license/starts new-license) tz)
-                                                   :term          (str (member-license/term new-license))
-                                                   :rate          (str (member-license/rate new-license))})
+       :body    (fn [body] (-> (stache/render body {:name            (account/first-name member)
+                                                   :new-unit        (make-friendly-unit-name (member-license/unit new-license))
+                                                   :old-unit        (make-friendly-unit-name unit)
+                                                   :move-out-date   (format-date (member-license/ends current-license) tz)
+                                                   :move-in-date    (format-date (member-license/starts new-license) tz)
+                                                   :term            (str (member-license/term new-license))
+                                                   :rate            (str (member-license/rate new-license))
+                                                   :rate-difference (str (member-license/rate current-license) rate)})
                               (md/md-to-html-string)))})))
 
 
@@ -336,8 +347,9 @@
      (->mailer deps)
      (account/email member)
      (mail/subject (:subject content))
-     (mm/msg (:body content))
-     {:uuid (event/uuid event)})))
+     (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
+     {:uuid (event/uuid event)
+       :from (or (:from content) (mail/from-noreply))})))
 
 
 (defmethod dispatch/job :transition/intra-xfer-created
@@ -365,7 +377,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :cahnnel (notification-channel (unit/property old-unit))}
+      :channel (notification-channel (unit/property old-unit))}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " is transferring to a new community!")
@@ -412,8 +424,9 @@
      (->mailer deps)
      (account/email member)
      (mail/subject (:subject content))
-     (mm/msg (:body content))
-     {:uuid (event/uuid event)})))
+     (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
+     {:uuid (event/uuid event)
+      :from (or (:from content) (mail/from-noreply))})))
 
 
 (defmethod dispatch/job :transition/inter-xfer-created
@@ -439,7 +452,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :cahnnel (notification-channel (unit/property unit))}
+      :channel (notification-channel (unit/property unit))}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " has been renewed for a month-to-month license!")
@@ -483,8 +496,9 @@
      (->mailer deps)
      (account/email member)
      (mail/subject (:subject content))
-     (mm/msg (:body content))
-     {:uuid (event/uuid event)})))
+     (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
+     {:uuid (event/uuid event)
+      :from (or (:from content) (mail/from-noreply))})))
 
 (defmethod dispatch/job :transition/month-to-month-created
   [deps event {:keys [transition-uuid] :as params}]
