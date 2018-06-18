@@ -221,7 +221,8 @@
      (account/email account)
      (mail/subject (:subject content))
      (mm/msg (:body content))
-     {:uuid (event/uuid event)})))
+    {:uuid (event/uuid event)
+      :from (mail/from-community)})))
 
 
 ;; passive renewals (roll to month-to-month) ====================================

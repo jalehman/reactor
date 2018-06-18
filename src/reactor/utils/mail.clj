@@ -22,6 +22,24 @@
   (mm/sig "Starcity Community"))
 
 
+(def from-operations
+  "Operations from address."
+  "Starcity Operations Team <ops@starcity.com>")
+
+
+(def ops-sig
+  "Ops signarture"
+  (mm/sig "Starcity Operations"))
+
+(def from-noreply
+  "Default, noreply email address."
+  "The Starcity Team <noreply@starcity.com>")
+
+(def noreply-sig
+  "The default, noreply signature"
+  "The Starcity Team")
+
+
 (defn subject
   "Subject line of an email."
   [s]
