@@ -9,6 +9,7 @@
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [markdown.core :as md]
+           [reactor.config :as config :refer [config]]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
@@ -27,12 +28,23 @@
   (format "%s/accounts/%s" hostname account-id))
 
 
-(defn- make-friendly-unit-name
+#_(defn- make-friendly-unit-name
   [unit]
   (let [code        (unit/code unit)
         property    (property/name (unit/property unit))
         unit-number (subs code (inc (clojure.string/last-index-of code "-")))]
     (str property " #" unit-number)))
+
+
+(defn- get-unit-info
+  [unit]
+  (let [code        (unit/code unit)
+        property    (property/name (unit/property unit))
+        unit-number (subs code (inc (clojure.string/last-index-of code "-")))
+        name        (str property " #" unit-number)]
+    {:property property
+     :number   unit-number
+     :name     name}))
 
 
 (defn format-date
@@ -47,7 +59,7 @@
   (let [transition (license-transition/by-uuid (->db deps) transition-uuid)
         license    (license-transition/current-license transition)
         member     (member-license/account license)
-        unit       (member-license/unit license)
+        unit       (get-unit-info (member-license/unit license))
         tz         (member-license/time-zone license)]
     (slack/send
      (->slack deps)
@@ -59,7 +71,7 @@
                  (member-url (->dashboard-hostname deps) (td/id member)))
        (sm/text "Learn more about this member's move out in the Admin Dashboard.")
        (sm/fields
-        (sm/field "Unit" (make-friendly-unit-name unit) true)
+        (sm/field "Unit" (:name unit) true)
         (sm/field "Move-out date" (format-date (license-transition/date transition) tz) true)
         (when-let [a (:asana/task transition)]
           (sm/field "Asana Move-out Task" a true))))))))
@@ -154,7 +166,8 @@
      (tb/assoc-when
       {:uuid (event/uuid event)
        :from (or (:from content) (mail/from-noreply))}
-      :cc (when (not= admin-email "admin@test.com") admin-email)))))
+      :cc (when (config/production? config) admin-email)
+      :bcc (when (config/production? config) mail/community-address)))))
 
 
 (defmethod dispatch/job :transition/move-out-created
@@ -183,7 +196,7 @@
                  (member-url (->dashboard-hostname deps) (td/id member)))
        (sm/text "Learn more about this member's move out in the Admin Dashboard.")
        (sm/fields
-        (sm/field "Unit" (make-friendly-unit-name unit) true)
+        (sm/field "Unit" (:name (get-unit-info unit)) true)
         (sm/field "Move-out date" (format-date (license-transition/date transition) tz) true)
         (when-let [a (:asana/task transition)]
           (sm/field "Asana Move-out Task" a true))))))))
@@ -214,7 +227,7 @@
                  (member-url (->dashboard-hostname deps) (td/id member)))
        (sm/text "Learn more about this member's renewal in the Admin Dashboard.")
        (sm/fields
-        (sm/field "Unit" (make-friendly-unit-name unit) true)
+        (sm/field "Unit" (:name (get-unit-info unit)) true)
         (sm/field "New License Term" (member-license/term new-license) true)
         (sm/field "New License Rate" (member-license/rate new-license) true)
         (sm/field "Renewal date" (format-date (license-transition/date transition) tz) true)))))))
@@ -250,8 +263,10 @@
      (account/email member)
      (mail/subject (:subject content))
      (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
-     {:uuid (event/uuid event)
-      :from (or (:from content) (mail/from-noreply))})))
+     (tb/assoc-when
+      {:uuid (event/uuid event)
+       :from (or (:from content) (mail/from-noreply))}
+      :bcc (when (config/production? config) mail/community-address)))))
 
 
 (defmethod dispatch/job :transition/renewal-created
@@ -284,8 +299,8 @@
                  (member-url (->dashboard-hostname deps) (td/id member)))
        (sm/text "Learn more about this member's transfer in the Admin Dashboard.")
        (sm/fields
-        (sm/field "Old Unit" (make-friendly-unit-name old-unit) true)
-        (sm/field "New Unit" (make-friendly-unit-name (member-license/unit new-license)) true)
+        (sm/field "Old Unit" (:name (get-unit-info old-unit)) true)
+        (sm/field "New Unit" (:name (get-unit-info (member-license/unit new-license))) true)
         (sm/field "New License Term" (member-license/term new-license) true)
         (sm/field "New License Rate" (member-license/rate new-license) true)
         (sm/field "Old Unit Move-out Date" (format-date (license-transition/date transition) tz) true)
@@ -307,17 +322,23 @@
 
 (defn prepare-intra-xfer-created-email
   [document member unit new-license current-license]
-  (let [tz (member-license/time-zone current-license)]
+  (let [tz       (member-license/time-zone current-license)
+        old-unit (get-unit-info (member-license/unit current-license))
+        new-unit (get-unit-info (member-license/unit new-license))]
     (tb/transform-when-key-exists document
       {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-       :body    (fn [body] (-> (stache/render body {:name            (account/first-name member)
-                                                   :new-unit        (make-friendly-unit-name (member-license/unit new-license))
-                                                   :old-unit        (make-friendly-unit-name unit)
-                                                   :move-out-date   (format-date (member-license/ends current-license) tz)
-                                                   :move-in-date    (format-date (member-license/starts new-license) tz)
-                                                   :term            (str (member-license/term new-license))
-                                                   :rate            (str (member-license/rate new-license))
-                                                   :rate-difference (str (get-rate-difference (member-license/rate current-license)) (member-license/rate new-license))})
+       :body    (fn [body] (-> (stache/render body {:name               (account/first-name member)
+                                                   :new-unit-name      (:name new-unit)
+                                                   :new-unit-number    (str (:number new-unit))
+                                                   :new-unit-community (str (:property new-unit))
+                                                   :old-unit-name      (:name old-unit)
+                                                   :old-unit-number    (str (:number old-unit))
+                                                   :old-unit-community (str (:property old-unit))
+                                                   :move-out-date      (format-date (member-license/ends current-license) tz)
+                                                   :move-in-date       (format-date (member-license/starts new-license) tz)
+                                                   :term               (str (member-license/term new-license))
+                                                   :rate               (str (member-license/rate new-license))
+                                                   :rate-difference    (str (get-rate-difference (member-license/rate current-license) (member-license/rate new-license)))})
                               (md/md-to-html-string)))})))
 
 
@@ -336,8 +357,10 @@
      (account/email member)
      (mail/subject (:subject content))
      (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
-     {:uuid (event/uuid event)
-       :from (or (:from content) (mail/from-noreply))})))
+     (tb/assoc-when
+      {:uuid (event/uuid event)
+       :from (or (:from content) (mail/from-noreply))}
+      :bcc (when (config/production? config) mail/community-address)))))
 
 
 (defmethod dispatch/job :transition/intra-xfer-created
@@ -372,8 +395,8 @@
                  (member-url (->dashboard-hostname deps) (td/id member)))
        (sm/text "Learn more about this member's transfer in the Admin Dashboard.")
        (sm/fields
-        (sm/field "Old Unit" (make-friendly-unit-name old-unit) true)
-        (sm/field "New Unit" (make-friendly-unit-name (member-license/unit new-license)) true)
+        (sm/field "Old Unit" (:name (get-unit-info old-unit)) true)
+        (sm/field "New Unit" (:name (get-unit-info (member-license/unit new-license))) true)
         (sm/field "New License Term" (member-license/term new-license) true)
         (sm/field "New License Rate" (member-license/rate new-license) true)
         (sm/field "Old Unit Move-out Date" (format-date (license-transition/date transition) tz) true)
@@ -386,17 +409,23 @@
 
 (defn prepare-inter-xfer-created-email
   [document member unit new-license current-license]
-  (let [tz (member-license/time-zone current-license)]
+  (let [tz       (member-license/time-zone current-license)
+        old-unit (get-unit-info (member-license/unit current-license))
+        new-unit (get-unit-info (member-license/unit new-license))]
     (tb/transform-when-key-exists document
       {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-       :body    (fn [body] (-> (stache/render body {:name            (account/first-name member)
-                                                   :new-unit        (make-friendly-unit-name (member-license/unit new-license))
-                                                   :old-unit        (make-friendly-unit-name unit)
-                                                   :move-out-date   (format-date (member-license/ends current-license) tz)
-                                                   :move-in-date    (format-date (member-license/starts new-license) tz)
-                                                   :term            (str (member-license/term new-license))
-                                                   :rate            (str (member-license/rate new-license))
-                                                   :rate-difference (str (get-rate-difference (member-license/rate current-license) (member-license/rate new-license)))})
+       :body    (fn [body] (-> (stache/render body {:name               (account/first-name member)
+                                                   :new-unit-name      (:name new-unit)
+                                                   :new-unit-number    (str (:number new-unit))
+                                                   :new-unit-community (str (:property new-unit))
+                                                   :old-unit-name      (:name old-unit)
+                                                   :old-unit-number    (str (:number old-unit))
+                                                   :old-unit-community (str (:property old-unit))
+                                                   :move-out-date      (format-date (member-license/ends current-license) tz)
+                                                   :move-in-date       (format-date (member-license/starts new-license) tz)
+                                                   :term               (str (member-license/term new-license))
+                                                   :rate               (str (member-license/rate new-license))
+                                                   :rate-difference    (str (get-rate-difference (member-license/rate current-license) (member-license/rate new-license)))})
                               (md/md-to-html-string)))})))
 
 
@@ -414,8 +443,10 @@
      (account/email member)
      (mail/subject (:subject content))
      (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
-     {:uuid (event/uuid event)
-      :from (or (:from content) (mail/from-noreply))})))
+     (tb/assoc-when
+      {:uuid (event/uuid event)
+       :from (or (:from content) (mail/from-noreply))}
+      :bcc (when (config/production? config) mail/community-address)))))
 
 
 (defmethod dispatch/job :transition/inter-xfer-created
@@ -448,7 +479,7 @@
                  (member-url (->dashboard-hostname deps) (td/id member)))
        (sm/text "Learn more about this member's renewal in the Admin Dashboard.")
        (sm/fields
-        (sm/field "Unit" (make-friendly-unit-name unit) true)
+        (sm/field "Unit" (:name (get-unit-info unit)) true)
         (sm/field "New License Term" (member-license/term new-license) true)
         (sm/field "New License Rate" (member-license/rate new-license) true)
         (sm/field "Renewal date" (format-date (license-transition/date transition) tz) true)))))))
@@ -486,8 +517,10 @@
      (account/email member)
      (mail/subject (:subject content))
      (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
-     {:uuid (event/uuid event)
-      :from (or (:from content) (mail/from-noreply))})))
+     (tb/assoc-when
+      {:uuid (event/uuid event)
+       :from (or (:from content) (mail/from-noreply))}
+      :bcc (when (config/production? config) mail/community-address)))))
 
 (defmethod dispatch/job :transition/month-to-month-created
   [deps event {:keys [transition-uuid] :as params}]
