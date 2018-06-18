@@ -220,9 +220,9 @@
      (->mailer deps)
      (account/email account)
      (mail/subject (:subject content))
-     (mm/msg (:body content))
-    {:uuid (event/uuid event)
-      :from (mail/from-community)})))
+     (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
+     {:uuid (event/uuid event)
+      :from (or (:from content) (mail/from-community))})))
 
 
 ;; passive renewals (roll to month-to-month) ====================================
