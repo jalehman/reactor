@@ -64,7 +64,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (notification-channel (unit/property unit))}
+      :channel (or (property/slack-channel (member-license/property license)) slack/crm)}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " is moving out!")
@@ -188,7 +188,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (notification-channel (unit/property unit))}
+      :channel (or (property/slack-channel (member-license/property license)) slack/crm)}
      (sm/msg
       (sm/info
        (sm/title (str "Updated Move-out Info for " (account/short-name member))
@@ -219,7 +219,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (notification-channel (unit/property unit))}
+      :channel (or (property/slack-channel (member-license/property current-license)) slack/crm)}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " has renewed their license!")
@@ -289,7 +289,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (notification-channel (unit/property old-unit))}
+      :channel (or (property/slack-channel (member-license/property current-license)) slack/crm)}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " is transferring to a new unit!")
@@ -329,7 +329,7 @@
                                                    :move-in-date    (format-date (member-license/starts new-license) tz)
                                                    :term            (str (member-license/term new-license))
                                                    :rate            (str (member-license/rate new-license))
-                                                   :rate-difference (str (member-license/rate current-license) rate)})
+                                                   :rate-difference (str (get-rate-difference (member-license/rate current-license)) rate)})
                               (md/md-to-html-string)))})))
 
 
@@ -377,7 +377,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (notification-channel (unit/property old-unit))}
+      :channel (or (property/slack-channel (member-license/property current-license)) slack/crm)}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " is transferring to a new community!")
@@ -401,13 +401,14 @@
   (let [tz (member-license/time-zone current-license)]
     (tb/transform-when-key-exists document
       {:subject (fn [subject] (stache/render subject {:name (account/first-name member)}))
-       :body    (fn [body] (-> (stache/render body {:name          (account/first-name member)
-                                                   :new-unit      (make-friendly-unit-name (member-license/unit new-license))
-                                                   :old-unit      (make-friendly-unit-name unit)
-                                                   :move-out-date (format-date (member-license/ends current-license) tz)
-                                                   :move-in-date  (format-date (member-license/starts new-license) tz)
-                                                   :term          (str (member-license/term new-license))
-                                                   :rate          (str (member-license/rate new-license))})
+       :body    (fn [body] (-> (stache/render body {:name            (account/first-name member)
+                                                   :new-unit        (make-friendly-unit-name (member-license/unit new-license))
+                                                   :old-unit        (make-friendly-unit-name unit)
+                                                   :move-out-date   (format-date (member-license/ends current-license) tz)
+                                                   :move-in-date    (format-date (member-license/starts new-license) tz)
+                                                   :term            (str (member-license/term new-license))
+                                                   :rate            (str (member-license/rate new-license))
+                                                   :rate-difference (str (get-rate-difference (member-license/rate current-license) rate))})
                               (md/md-to-html-string)))})))
 
 
@@ -452,7 +453,7 @@
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
-      :channel (notification-channel (unit/property unit))}
+      :channel (or (property/slack-channel (member-license/property current-license)) slack/crm)}
      (sm/msg
       (sm/info
        (sm/title (str (account/short-name member) " has been renewed for a month-to-month license!")
