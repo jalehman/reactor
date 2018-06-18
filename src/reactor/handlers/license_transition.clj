@@ -9,7 +9,7 @@
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [markdown.core :as md]
-           [reactor.config :as config :refer [config]]
+            [reactor.config :as config :refer [config]]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
@@ -26,14 +26,6 @@
 
 (defn- member-url [hostname account-id]
   (format "%s/accounts/%s" hostname account-id))
-
-
-#_(defn- make-friendly-unit-name
-  [unit]
-  (let [code        (unit/code unit)
-        property    (property/name (unit/property unit))
-        unit-number (subs code (inc (clojure.string/last-index-of code "-")))]
-    (str property " #" unit-number)))
 
 
 (defn- get-unit-info
@@ -340,7 +332,6 @@
                                                    :rate               (str (member-license/rate new-license))
                                                    :rate-difference    (str (get-rate-difference (member-license/rate current-license) (member-license/rate new-license)))})
                               (md/md-to-html-string)))})))
-
 
 
 (defmethod dispatch/notify :transition/intra-xfer-created
