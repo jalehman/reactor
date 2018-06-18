@@ -41,18 +41,6 @@
   (date/short (date/tz-uncorrected date tz)))
 
 
-(def ^:private property-channel
-  {"52gilbert"   "#52-gilbert"
-   "2072mission" "#2072-mission"
-   "6nottingham" "#6-nottingham"
-   "414bryant"   "#414-byant"})
-
-
-(defn- notification-channel [property]
-  (let [code (property/code property)]
-    (get property-channel code slack/crm)))
-
-
 ;; slack notification -> staff
 (defmethod dispatch/report :transition/move-out-created
   [deps event {:keys [transition-uuid] :as params}]
@@ -329,7 +317,7 @@
                                                    :move-in-date    (format-date (member-license/starts new-license) tz)
                                                    :term            (str (member-license/term new-license))
                                                    :rate            (str (member-license/rate new-license))
-                                                   :rate-difference (str (get-rate-difference (member-license/rate current-license)) rate)})
+                                                   :rate-difference (str (get-rate-difference (member-license/rate current-license)) (member-license/rate new-license))})
                               (md/md-to-html-string)))})))
 
 
@@ -408,7 +396,7 @@
                                                    :move-in-date    (format-date (member-license/starts new-license) tz)
                                                    :term            (str (member-license/term new-license))
                                                    :rate            (str (member-license/rate new-license))
-                                                   :rate-difference (str (get-rate-difference (member-license/rate current-license) rate))})
+                                                   :rate-difference (str (get-rate-difference (member-license/rate current-license) (member-license/rate new-license)))})
                               (md/md-to-html-string)))})))
 
 
