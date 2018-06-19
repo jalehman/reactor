@@ -213,7 +213,7 @@
   [deps event {:keys [license-id days]}]
   (let [license     (d/entity (->db deps) license-id)
         account     (member-license/account license)
-        document-id (get-renewal-reminder-email-document-id)
+        document-id (get-renewal-reminder-email-document-id license)
         document    (tipe/fetch-document (->tipe deps) document-id)
         content     (prepare-renewal-email document account license)]
     (mailer/send
@@ -247,7 +247,7 @@
 
 (defmethod dispatch/job ::create-month-to-month-renewals
   [deps event {:keys [t] :as params}]
-  (let [licenses (licenses-without-transitions-ending-within (->db deps) t 0 30)]
+  (let [licenses (licenses-without-transitions-ending-in-days (->db deps) t 30)]
     (map
      (fn [license]
        (event/job ::create-month-to-month-transition
@@ -585,7 +585,11 @@
                                        :reactivate?   true}
                         :triggered-by event}))
 
-      (ends-after-first-of-month? period transition)
+      ;; Only create a second-half prorated payment if we're dealing with an
+      ;; inter-transfer (new building) or a rate change
+      (and (ends-after-first-of-month? period transition)
+           (or (= (transition/type transition) :license-transition.type/inter-xfer)
+               (has-new-rate? transition)))
       (conj (event/job ::create-prorated-payment
                        {:params       {:transition-id (td/id transition)}
                         :triggered-by event})))))

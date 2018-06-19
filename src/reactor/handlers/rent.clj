@@ -1,6 +1,7 @@
 (ns reactor.handlers.rent
   (:require [blueprints.models.account :as account]
             [blueprints.models.event :as event]
+            [blueprints.models.license-transition :as transition]
             [blueprints.models.member-license :as member-license]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
@@ -89,7 +90,7 @@
 (defn active-licenses
   "Query all active licenses that have not yet commenced."
   [db period]
-  (d/q '[:find ?l ?p
+  (d/q '[:find [?l ...]
          :in $ ?period
          :where
          ;; active licenses
@@ -112,32 +113,58 @@
 
 
 (defn- has-no-current-rent-payment?
-  [teller account from]
+  [teller account start]
   (when-let [customer (tcustomer/by-account teller account)]
     (empty?
      (tpayment/query teller {:customers     [customer]
                              :payment-types [:payment.type/rent]
-                             :from          (c/to-date (t/minus from (t/days 1)))
-                             :to            (c/to-date (t/plus from (t/days 1)))
+                             :from          (c/to-date (t/minus start (t/days 1)))
+                             :to            (c/to-date (t/plus start (t/days 1)))
                              :datekey       :payment/pstart}))))
 
 
 (defn- should-create-rent-payment?
-  [teller account from]
-  (let [from (c/to-date-time from)]
+  [teller account start]
+  (let [start (c/to-date-time start)]
     (and
      (not (on-autopay? teller account))
-     (has-no-current-rent-payment? teller account from))))
+     (has-no-current-rent-payment? teller account start))))
+
+
+(defn- license-encompasses-period?
+  [license start]
+  ;; we know that the current license started before now, otherwise we wouldn't
+  ;; be able to get to this point.
+  (let [tz    (member-license/time-zone license)
+        l-end (member-license/ends license)
+        eom   (date/end-of-month start tz)]
+    ;; period is encompassed if end-of-month and license end are the same, OR
+    ;; the license end is *after* the end of month
+    (or (= eom l-end) (.after l-end eom))))
+
+
+(defn- transitioning-to-same-rate?
+  [db license start]
+  (boolean
+   ;; when there's a transition
+   (when-let [transition (transition/by-license db license)]
+     (let [new-license (transition/new-license transition)]
+       ;; and the type is intra-community or renewal
+       (and (#{:license-transition.type/intra-xfer
+               :license-transition.type/renewal}
+             (transition/type transition))
+            ;; and the rate isn't changing
+            (= (member-license/rate license) (member-license/rate new-license)))))))
 
 
 (defn- payment-end-date
-  [license start]
+  [db license start]
   (let [tz  (member-license/time-zone license)
-        end (date/end-of-month start tz)]
-    (if (t/within? (t/interval (c/to-date-time start) (c/to-date-time end))
-                   (c/to-date-time (member-license/ends license)))
-      (member-license/ends license)
-      end)))
+        eom (date/end-of-month start tz)]
+    (cond
+      (license-encompasses-period? license start)    eom
+      (transitioning-to-same-rate? db license start) eom
+      :otherwise                                     (member-license/ends license))))
 
 
 (defn- payment-amount
@@ -157,35 +184,37 @@
 
 
 (defn- rent-payment-params
-  [license period]
+  [db license period]
   (let [tz    (member-license/time-zone license)
         start (date/beginning-of-day period tz)
-        end   (payment-end-date license start)]
+        end   (payment-end-date db license start)]
     {:start             start
      :end               end
      :amount            (payment-amount license start end)
      :member-license-id (td/id license)}))
 
 
-(defn create-payment-events
-  [deps event period]
-  (let [actives (active-licenses (->db deps) period)]
-    (->> (mapv
-          (fn [[member-license-id amount]]
-            (let [license (d/entity (->db deps) member-license-id)
-                  tz      (member-license/time-zone license)
-                  start   (date/beginning-of-day period tz)
-                  account (member-license/account license)]
-              (when (should-create-rent-payment? (->teller deps) account start)
-                (event/job :rent-payment/create {:params       (rent-payment-params license period)
-                                                 :triggered-by event}))))
-          actives)
-         (remove nil?))))
+(defn- rent-payment-events
+  [deps event license period]
+  (let [account (member-license/account license)
+        tz      (member-license/time-zone license)
+        start   (date/beginning-of-day period tz)]
+    (cond-> []
+      (should-create-rent-payment? (->teller deps) account start)
+      (conj (event/job :rent-payment/create
+                       {:params       (rent-payment-params (->db deps) license period)
+                        :triggered-by event})))))
 
 
-(defmethod dispatch/job :rent-payments/create-all [deps event params]
+(defmethod dispatch/job :rent-payments/create-all
+  [deps event {:keys [period] :as params}]
   (assert (:period params) "The time period to create payments for must be supplied!")
-  (create-payment-events deps event (:period params)))
+  (let [actives (active-licenses (->db deps) period)]
+    (mapcat
+     (fn [member-license-id]
+       (let [license (d/entity (->db deps) member-license-id)]
+         (rent-payment-events deps event license period)))
+     actives)))
 
 
 ;; =============================================================================

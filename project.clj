@@ -1,4 +1,4 @@
-(defproject starcity/reactor "1.11.2-SNAPSHOT"
+(defproject starcity/reactor "1.11.5-SNAPSHOT"
   :description "Transactional event processing queue."
   :url "https://github.com/starcity-properties/reactor"
   :license {:name "Eclipse Public License"
@@ -9,11 +9,11 @@
                  [org.clojure/tools.cli "0.3.5"]
                  [org.clojure/tools.namespace "0.2.11"]
                  ;; db
-                 [starcity/blueprints "2.6.0" :exclusions [com.datomic/datomic-free]]
-                 [starcity/teller "1.2.2"]
+                 [starcity/blueprints "2.6.2" :exclusions [com.datomic/datomic-free]]
+                 [starcity/teller "1.2.4"]
                  ;; services
                  [starcity/stripe-clj "0.3.3"]
-                 [starcity/mailer "0.5.0-SNAPSHOT"]
+                 [starcity/mailer "0.5.0"]
                  [starcity/hubspot-clj "0.3.1"]
                  ;; util
                  [hiccup "1.0.5"]
