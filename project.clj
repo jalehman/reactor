@@ -13,7 +13,7 @@
                  [starcity/teller "1.2.4"]
                  ;; services
                  [starcity/stripe-clj "0.3.3"]
-                 [starcity/mailer "0.4.0"]
+                 [starcity/mailer "0.5.0"]
                  [starcity/hubspot-clj "0.3.1"]
                  ;; util
                  [hiccup "1.0.5"]
