@@ -9,11 +9,11 @@
                  [org.clojure/tools.cli "0.3.5"]
                  [org.clojure/tools.namespace "0.2.11"]
                  ;; db
-                 [starcity/blueprints "2.6.0" :exclusions [com.datomic/datomic-free]]
-                 [starcity/teller "1.3.0-SNAPSHOT"]
+                 [starcity/blueprints "2.6.2" :exclusions [com.datomic/datomic-free]]
+                 [starcity/teller "1.3.0"]
                  ;; services
                  [starcity/stripe-clj "0.3.3"]
-                 [starcity/mailer "0.2.0"]
+                 [starcity/mailer "0.5.0"]
                  [starcity/hubspot-clj "0.3.1"]
                  ;; util
                  [hiccup "1.0.5"]

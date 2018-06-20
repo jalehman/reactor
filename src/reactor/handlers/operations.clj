@@ -176,9 +176,27 @@
                                          :triggered-by event}))))))
 
 
-(def renewal-reminder-document-id
-  "the Tipe document id for the renewal reminder email template"
+(def renewal-reminder-pre-anniversary-document-id
+  "The Tipe document id for the renewal reminder email template to be sent to
+  members that have not yet lived in the same unit for one year"
   "5b196fde154a600013c5757a")
+
+
+(def renewal-reminder-post-anniversary-document-id
+  "The Tipe document id for the renewal reminder email template to be sent to
+  members that have lived in the same unit for one year"
+  "5b22ea0f8a4d5f0013aad3ad")
+
+
+(defn get-renewal-reminder-email-document-id
+  "Gets the pre- or post-anniversary renewal reminder email template from Tipe.
+  NOTE: This logic will miss members who have lived in the same unit for 12
+  months by renewing a combination of 3-, 6-, or 1-month terms. Logic to account
+  for this case will come in a future development sprint."
+  [license]
+  (if (= 12 (member-license/term license))
+    renewal-reminder-post-anniversary-document-id
+    renewal-reminder-pre-anniversary-document-id))
 
 
 (defn prepare-renewal-email
@@ -193,16 +211,18 @@
 
 (defmethod dispatch/notify ::send-renewal-reminder
   [deps event {:keys [license-id days]}]
-  (let [license  (d/entity (->db deps) license-id)
-        account  (member-license/account license)
-        document (tipe/fetch-document (->tipe deps) renewal-reminder-document-id)
-        content  (prepare-renewal-email document account license)]
+  (let [license     (d/entity (->db deps) license-id)
+        account     (member-license/account license)
+        document-id (get-renewal-reminder-email-document-id license)
+        document    (tipe/fetch-document (->tipe deps) document-id)
+        content     (prepare-renewal-email document account license)]
     (mailer/send
      (->mailer deps)
      (account/email account)
      (mail/subject (:subject content))
-     (mm/msg (:body content))
-     {:uuid (event/uuid event)})))
+     (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
+     {:uuid (event/uuid event)
+      :from (or (:from content) (mail/from-community))})))
 
 
 ;; passive renewals (roll to month-to-month) ====================================
@@ -267,15 +287,15 @@
   [db as-of]
   (let [start-of-day (date/beginning-of-day as-of)
         end-of-day   (date/end-of-day as-of)]
-   (d/q
-    '[:find [?l ...]
-      :in $ ?sod ?eod
-      :where
-      [?l :member-license/status :member-license.status/pending]
-      [?l :member-license/commencement ?start-date]
-      [(.after ^java.util.Date ?start-date ?sod)]
-      [(.before ^java.util.Date ?start-date ?eod)]]
-    db start-of-day end-of-day)))
+    (d/q
+     '[:find [?l ...]
+       :in $ ?sod ?eod
+       :where
+       [?l :member-license/status :member-license.status/pending]
+       [?l :member-license/commencement ?start-date]
+       [(.after ^java.util.Date ?start-date ?sod)]
+       [(.before ^java.util.Date ?start-date ?eod)]]
+     db start-of-day end-of-day)))
 
 
 (defmethod dispatch/job ::activate-pending-licenses
