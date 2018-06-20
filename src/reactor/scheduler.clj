@@ -31,16 +31,24 @@
         :schedule "0 0 0 * 1 * *"}
 
        :end-of-month-operations
-       {:handler (fn [t {conn :conn}]
-                   (when (last-day-of-month? t)
-                     (d/transact-async conn [(event/job :ops/end-of-month {:params {:t t}})])))
-        :params  params
+       {:handler  (fn [t {conn :conn}]
+                    (when (last-day-of-month? t)
+                      (d/transact-async conn [(event/job :ops/end-of-month {:params {:t t}})])))
+        :params   params
         :schedule "0 0 0 * 28-31 * *"}
 
 
        :daily-operations
        {:handler  (fn [t {conn :conn}]
                     (d/transact-async conn [(event/job :ops/daily {:params {:t t}})]))
+        :params   params
+        ;; 12am every day
+        :schedule "0 0 0 * * * *"}
+
+
+       :teller-operations
+       {:handler  (fn [t {conn :conn}]
+                    (d/transact-async conn [(event/job :teller/daily {:params {:t t}})]))
         :params   params
         ;; 12am every day
         :schedule "0 0 0 * * * *"}

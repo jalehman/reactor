@@ -19,6 +19,7 @@
             [reactor.handlers.security-deposit]
             [reactor.handlers.session]
             [reactor.handlers.stripe]
+            [reactor.handlers.teller]
             [blueprints.models.event :as event]
             [taoensso.timbre :as timbre]
             [toolbelt.async :as ta :refer [<!!?]]
