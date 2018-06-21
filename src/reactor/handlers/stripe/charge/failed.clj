@@ -19,6 +19,18 @@
             [teller.payment :as tpayment]
             [toolbelt.datomic :as td]))
 
+
+;; ==============================================================================
+;; helpers ======================================================================
+;; ==============================================================================
+
+
+(defn- payment->order [db payment]
+  (if-let [subs (tpayment/subscription payment)]
+    (order/by-subscription db subs)
+    (order/by-payment db payment)))
+
+
 ;; =============================================================================
 ;; Reports
 ;; =============================================================================
@@ -62,7 +74,7 @@
 (defmethod dispatch/report ::notify.service [deps event {:keys [account-id payment-id]}]
   (let [account (d/entity (->db deps) account-id)
         payment (tpayment/by-id (->teller deps) payment-id)
-        order   (order/by-payment (->db deps) payment)]
+        order   (payment->order (->db deps) payment)]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -122,7 +134,7 @@
 (defmethod dispatch/notify ::notify.service [deps event {:keys [account-id payment-id]}]
   (let [account (d/entity (->db deps) account-id)
         payment (tpayment/by-id (->teller deps) payment-id)
-        order   (order/by-payment (->db deps) payment)]
+        order   (payment->order (->db deps) payment)]
     (mailer/send
      (->mailer deps)
      (account/email account)
