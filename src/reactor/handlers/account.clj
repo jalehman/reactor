@@ -27,7 +27,8 @@
             [toolbelt.date :as date]
             [toolbelt.datomic :as td]
             [teller.payment :as tpayment]
-            [teller.customer :as tcustomer]))
+            [teller.customer :as tcustomer]
+            [teller.property :as tproperty]))
 
 ;; =============================================================================
 ;; Helpers
@@ -111,16 +112,19 @@
 
 
 (defmethod dispatch/job ::create-first-months-rent [deps event params]
-  (let [account  (d/entity (->db deps) (:account-id params))
-        customer (tcustomer/by-account (->teller deps) account)
-        license  (member-license/active (->db deps) account)
-        tz       (member-license/time-zone license)
-        pstart   (member-license/starts license)
-        amount   (prorated-amount pstart (member-license/rate license))]
+  (let [account   (d/entity (->db deps) (:account-id params))
+        community (account/current-property (->db deps) account)
+        property  (tproperty/by-community (->teller deps) community)
+        customer  (tcustomer/by-account (->teller deps) account)
+        license   (member-license/active (->db deps) account)
+        tz        (member-license/time-zone license)
+        pstart    (member-license/starts license)
+        amount    (prorated-amount pstart (member-license/rate license))]
     (tpayment/create! customer amount :payment.type/rent
-                      {:period [pstart (date/end-of-month pstart tz)]
-                       :status :payment.status/due
-                       :due    pstart})
+                      {:period   [pstart (date/end-of-month pstart tz)]
+                       :status   :payment.status/due
+                       :due      pstart
+                       :property property})
     nil))
 
 
