@@ -65,7 +65,7 @@
 
 (defmethod application-param :application/move-in [_ application key]
   (when-let [date (key application)]
-    [:move_in (str date)]))
+    [:move_in (->hs-date date)]))
 
 
 (defmethod application-param :application/communities [_ application _]
