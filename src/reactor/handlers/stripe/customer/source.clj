@@ -121,11 +121,12 @@
 
 (defmethod dispatch/stripe :stripe.event.customer.source/updated
   [deps event params]
-  (let [se      (common/fetch-event (->teller deps) event)
-        status  (:status se)
-        source  (tsource/by-id (->teller deps) (:id (common/subject se)))
-        _       (tevent/handle-stripe-event (->teller deps) se)
-        account (-> source tsource/customer tcustomer/account)]
+  (let [se       (common/fetch-event (->teller deps) event)
+        status   (:status se)
+        source   (tsource/by-id (->teller deps) (:id (common/subject se)))
+        _        (tevent/handle-stripe-event (->teller deps) se)
+        customer (when-let [s source] (tsource/customer s))
+        account  (when-let [c customer] (tcustomer/account c)) ]
     (when (tsource/bank-account? source)
       ((juxt event/report event/notify) (event/key event)
        {:params       {:account-id (td/id account)
