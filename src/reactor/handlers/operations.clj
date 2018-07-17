@@ -222,7 +222,8 @@
      (mail/subject (:subject content))
      (mm/msg (:body content) (or (:signature content) (mail/noreply-sig)))
      {:uuid (event/uuid event)
-      :from (or (:from content) (mail/from-community))})))
+      :from (or (:from content) (mail/from-community))
+      :bcc  (when (config/production? config) mail/community-address)})))
 
 
 ;; passive renewals (roll to month-to-month) ====================================
