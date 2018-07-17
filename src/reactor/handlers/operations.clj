@@ -15,6 +15,7 @@
             [mailer.core :as mailer]
             [mailer.message :as mm]
             [markdown.core :as md]
+            [reactor.config :as config :refer [config]]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
