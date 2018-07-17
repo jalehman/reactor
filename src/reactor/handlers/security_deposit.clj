@@ -75,6 +75,26 @@
 ;; =============================================================================
 
 
+(defmethod dispatch/job :deposit/refund
+  [deps event {:keys [deposit-id account-id]}]
+  [(event/report (event/key event) {:params       {:deposit-id deposit-id
+                                                   :account-id account-id}
+                                    :triggered-by event})
+   (event/notify (event/key event) {:params       {:deposit-id deposit-id
+                                                   :account-id account-id}
+                                    :triggered-by event})])
+
+
+(defmethod dispatch/notify :deposit/refund
+  [deps event {:keys [deposit-id account-id]}]
+  (println "notify:" deposit-id account-id))
+
+
+(defmethod dispatch/report :deposit/refund
+  [deps event {:keys [deposit-id account-id]}]
+  (println "report:" deposit-id account-id))
+
+
 ;; (defmethod dispatch/notify :deposit.refund/finish
 ;;   [deps event {:keys [deposit-id amount reasons]}]
 ;;   (let [deposit (d/entity (->db deps) deposit-id)
