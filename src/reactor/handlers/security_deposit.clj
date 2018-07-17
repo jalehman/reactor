@@ -85,9 +85,24 @@
                                     :triggered-by event})])
 
 
+(defn- member-url [hostname account-id]
+  (format "%s/accounts/%s" hostname account-id))
+
+
 (defmethod dispatch/notify :deposit/refund
   [deps event {:keys [deposit-id account-id]}]
-  (println "notify:" deposit-id account-id))
+  (let [account (d/entity (->db deps) account-id)]
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel slack/ops}
+     (sm/msg
+      (sm/info
+       (sm/title (str "Deposit Refunded for "
+                      (account/short-name account))
+                 (member-url (->dashboard-hostname deps) (td/id account)))
+       (sm/fields
+        (sm/field "Total" (format "%.2f" 10.0))))))))
 
 
 (defmethod dispatch/report :deposit/refund
