@@ -59,7 +59,8 @@
 (defmethod dispatch/job :ops/daily
   [deps event {:keys [t]}]
   [(event/job ::report-untransitioned-licenses
-              {:params {:t t} :triggered-by event})
+              {:params       {:t t}
+               :triggered-by event})
    (event/job ::send-renewal-reminders
               {:params       {:t        t
                               :interval reminder-interval}
@@ -81,7 +82,7 @@
 ;; helpers ======================================================================
 
 
-(defn- licenses-without-transitions-between
+(defn licenses-without-transitions-between
   [db from to]
   (->> (d/q
         '[:find [?l ...]
@@ -89,14 +90,14 @@
           :where
           [?l :member-license/ends ?date]
           [?l :member-license/status :member-license.status/active]
-          [(.after ^java.util.Date ?date ?start)]
-          [(.before ^java.util.Date ?date ?end)]]
+          [(>= ?date ?start)]
+          [(<= ^java.util.Date ?date ?end)]]
         db from to)
        (map (partial d/entity db))
        (remove member-license/has-transition?)))
 
 
-(defn- licenses-without-transitions-ending-in-days
+(defn licenses-without-transitions-ending-in-days
   "Find all the licenses that do not have transitions that end a precise number of
   `days` after date `t`."
   [db t days]
@@ -106,7 +107,7 @@
     (licenses-without-transitions-between db start end)))
 
 
-(defn- licenses-without-transitions-ending-within
+(defn licenses-without-transitions-ending-within
   "Find all the licenses that do not have transitions that end within `from-days`
   and `to-days` after date `t`."
   [db t days-from days-to]
@@ -151,9 +152,11 @@
                    (apply str)))))))
 
 
+
 (defmethod dispatch/report ::report-untransitioned-licenses
   [deps event {:keys [t] :as params}]
-  (let [licenses (licenses-without-transitions-ending-within (->db deps) t 31 45)]
+  (let [[from to] [(last reminder-interval) (first reminder-interval)]
+        licenses  (licenses-without-transitions-ending-within (->db deps) t from to)]
     (doseq [[property licenses] (group-by member-license/property licenses)]
       (send-untransitioned-report deps t property licenses))))
 
