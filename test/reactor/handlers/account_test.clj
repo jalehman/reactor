@@ -1,22 +1,18 @@
 (ns reactor.handlers.account-test
-  (:require [blueprints.models
-             [event :as event]
-             [license :as license]
-             [member-license :as member-license]
-             [service :as service]
-             [order :as order]]
+  (:require [blueprints.models.event :as event]
+            [blueprints.models.license :as license]
+            [blueprints.models.member-license :as member-license]
+            [blueprints.models.order :as order]
+            [blueprints.models.service :as service]
+            [clojure.core.async :as a]
             [clojure.spec.alpha :as s]
             [clojure.test :refer :all]
-            [clojure.core.async :as a]
             [datomic.api :as d]
-            [reactor
-             [dispatch :as dispatch]
-             [fixtures :as fixtures :refer [with-conn]]]
-            [reactor.handlers.account]
+            [reactor.dispatch :as dispatch]
+            [reactor.fixtures :as fixtures :refer [with-conn]]
             [reactor.handlers.helpers :as helpers]
-            [toolbelt
-             [core :as tb]
-             [async :as ta]]))
+            [toolbelt.async :as ta]
+            [toolbelt.core :as tb]))
 
 (use-fixtures :once fixtures/conn-fixture)
 

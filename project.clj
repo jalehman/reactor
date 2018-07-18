@@ -34,7 +34,8 @@
                  ;; dependency resolution
                  [org.apache.httpcomponents/httpclient "4.5.4"]
                  [clostache "0.6.1"]
-                 [markdown-clj "1.0.2"]]
+                 [markdown-clj "1.0.2"]
+                 [fixturex "0.3.2"]]
 
   :plugins [[s3-wagon-private "1.2.0"]]
 
