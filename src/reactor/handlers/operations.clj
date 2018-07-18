@@ -50,6 +50,13 @@
 ;; ==============================================================================
 
 
+;; NOTE: We need to correct for timezones throughout our events. While we're in
+;; California only, it's alright to just hardcode this. Obviously, that won't
+;; work forever. How will this system work later?
+(def tz
+  (t/time-zone-for-id "America/Los_Angeles"))
+
+
 (def reminder-interval
   "The number of days which should pass between sending renewal reminders to an
   unresponsive member."
@@ -102,8 +109,8 @@
   `days` after date `t`."
   [db t days]
   (let [then  (c/to-date (t/plus (c/to-date-time t) (t/days days)))
-        start (date/beginning-of-day then)
-        end   (date/end-of-day then)]
+        start (date/beginning-of-day then tz)
+        end   (date/end-of-day then tz)]
     (licenses-without-transitions-between db start end)))
 
 
@@ -113,8 +120,8 @@
   [db t days-from days-to]
   (let [from  (c/to-date (t/plus (c/to-date-time t) (t/days days-from)))
         to    (c/to-date (t/plus (c/to-date-time t) (t/days days-to)))
-        start (date/beginning-of-day from)
-        end   (date/end-of-day to)]
+        start (date/beginning-of-day from tz)
+        end   (date/end-of-day to tz)]
     (licenses-without-transitions-between db start end)))
 
 
