@@ -75,12 +75,6 @@
    (event/job ::create-month-to-month-renewals
               {:params       {:t t}
                :triggered-by event})
-   (event/job ::deactivate-expired-licenses
-              {:params       {:t t}
-               :triggered-by event})
-   (event/job ::activate-pending-licenses
-              {:params       {:t t}
-               :triggered-by event})
    (event/job ::cancel-transitioning-orders
               {:params       {:t t}
                :triggered-by event})])
@@ -102,6 +96,14 @@
         db from to)
        (map (partial d/entity db))
        (remove member-license/has-transition?)))
+
+
+(defn licenses-without-transitions-ending-at
+  "Find all the licenses that do not have transitions that end on `date`."
+  [db date]
+  (let [start (date/beginning-of-day date tz)
+        end   (date/end-of-day date tz)]
+    (licenses-without-transitions-between db start end)))
 
 
 (defn licenses-without-transitions-ending-in-days
@@ -259,13 +261,21 @@
 
 (defmethod dispatch/job ::create-month-to-month-renewals
   [deps event {:keys [t] :as params}]
-  (let [licenses (licenses-without-transitions-ending-in-days (->db deps) t 30)]
-    (map
-     (fn [license]
-       (event/job ::create-month-to-month-transition
-                  {:params       {:license-id (td/id license)}
-                   :triggered-by event}))
-     licenses)))
+  (let [one-month-out (t/plus (c/to-date-time t) (t/months 1))
+        licenses      (licenses-without-transitions-ending-at (->db deps) one-month-out)]
+    (conj
+     (map
+      (fn [license]
+        (event/job ::create-month-to-month-transition
+                   {:params       {:license-id (td/id license)}
+                    :triggered-by event}))
+      licenses)
+     (event/job ::deactivate-expired-licenses
+                {:params       {:t t}
+                 :triggered-by event})
+     (event/job ::activate-pending-licenses
+                {:params       {:t t}
+                 :triggered-by event}))))
 
 
 ;; deactivate old licenses ======================================================
@@ -297,16 +307,16 @@
 
 (defn- pending-licenses
   [db as-of]
-  (let [start-of-day (date/beginning-of-day as-of)
-        end-of-day   (date/end-of-day as-of)]
+  (let [start-of-day (date/beginning-of-day as-of tz)
+        end-of-day   (date/end-of-day as-of tz)]
     (d/q
      '[:find [?l ...]
        :in $ ?sod ?eod
        :where
        [?l :member-license/status :member-license.status/pending]
        [?l :member-license/commencement ?start-date]
-       [(.after ^java.util.Date ?start-date ?sod)]
-       [(.before ^java.util.Date ?start-date ?eod)]]
+       [(>= ?start-date ?sod)]
+       [(< ?start-date ?eod)]]
      db start-of-day end-of-day)))
 
 
