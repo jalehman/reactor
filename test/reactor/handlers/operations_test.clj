@@ -215,7 +215,8 @@
   (tdt/with-conn conn
     (with-fixtures [(transaction-fixture
                      (let [transition-license (mock-license [:unit/name "52gilbert-4"] :ends-days-from-now 30)]
-                       [(mock-license [:unit/name "52gilbert-1"] :ends-days-from-now 31) ; because January has 31 days
+                       [(mock-license [:unit/name "52gilbert-1"] :ends-days-from-now 31 :term 3)
+                        (mock-license [:unit/name "52gilbert-4"] :ends-days-from-now 31 :term 1) ; because January has 31 days
                         (mock-license [:unit/name "52gilbert-2"] :ends-days-from-now 30)
                         (mock-license [:unit/name "52gilbert-3"] :ends-days-from-now 29)
                         transition-license
@@ -232,6 +233,10 @@
                (event/key (second res))))
 
         (testing "only licenses without transitions that end in 30 days are renewed"
-          (let [license (d/entity (d/db conn) (:license-id (event/params (last res))))]
-            (is (= "52gilbert-1" (-> license :member-license/unit :unit/name))
+          (let [license   (d/entity (d/db conn) (:license-id (event/params (last res))))
+                unit-name (-> license :member-license/unit :unit/name)]
+            (is (not= "52gilbert-1" unit-name)
+                "renewals are not automatically created for members with non-month-to-month licenses")
+
+            (is (= "52gilbert-4" unit-name)
                 "the license in the event is the one that ends in 30 days")))))))

@@ -262,7 +262,9 @@
 (defmethod dispatch/job ::create-month-to-month-renewals
   [deps event {:keys [t] :as params}]
   (let [one-month-out (t/plus (c/to-date-time t) (t/months 1))
-        licenses      (licenses-without-transitions-ending-at (->db deps) one-month-out)]
+        mtm-license   (license/by-term (->db deps) 1)
+        licenses      (->> (licenses-without-transitions-ending-at (->db deps) one-month-out)
+                           (filter (comp #{1} member-license/term)))]
     (conj
      (map
       (fn [license]
