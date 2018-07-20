@@ -33,19 +33,7 @@
 ;; =============================================================================
 
 
-(def ^:private property-channel
-  {"52gilbert"   "#52-gilbert"
-   "2072mission" "#2072-mission"
-   "6nottingham" "#6-nottingham"})
-
-
-(defn- notification-channel [db note]
-  (let [code (when-let [a (note/account note)]
-               (property/code (account/current-property db a)))]
-    (get property-channel code slack/crm)))
-
-
-(defn- get-properties [db refs]
+(defn- property-codes [db refs]
   (set (map
         #(cond
            (some? (account/email %)) (property/code (account/current-property db %))
@@ -54,18 +42,28 @@
         refs)))
 
 
-(defn- get-notification-channels [db refs]
-  (let [properties (get-properties db refs)]
-    (map #(get property-channel % slack/crm) properties)))
+(defn- property-channel [property]
+  (or (property/slack-channel property) slack/crm))
 
 
-(defn- get-mentions [refs]
+(defn- notification-channel [db note]
+  (let [property (when-let [a (note/account note)]
+                   (account/current-property db a))]
+    (property-channel property)))
+
+
+(defn- notification-channels [db refs]
+  (->> (property-codes db refs)
+       (map (comp property-channel (partial d/entity db) (partial conj [:property/code])))))
+
+
+(defn- mentions [refs]
   (->> refs
        (map
         #(cond
            (some? (account/email %)) (account/short-name %)
            (some? (property/code %)) (property/code %)
-           :otherwise nil))
+           :otherwise                nil))
        (remove nil?)))
 
 
@@ -73,7 +71,7 @@
   [deps event {:keys [uuid slack-channel] :as params}]
   (let [note     (note/by-uuid (->db deps) uuid)
         type     (if (note/ticket? note) "ticket" "note")
-        mentions (apply str (interpose ", " (-> note note/refs get-mentions)))]
+        mentions (apply str (interpose ", " (-> note note/refs mentions)))]
     (slack/send
      (->slack deps)
      {:uuid    (event/uuid event)
@@ -91,7 +89,7 @@
 
 (defmethod dispatch/job :note/created [deps event {:keys [refs uuid] :as params}]
   (let [note     (note/by-uuid (->db deps) uuid)
-        channels (get-notification-channels (->db deps) (note/refs note))]
+        channels (notification-channels (->db deps) (note/refs note))]
     (map
      #(event/report (event/key event) {:params       (assoc params :slack-channel %)
                                        :triggered-by event})
