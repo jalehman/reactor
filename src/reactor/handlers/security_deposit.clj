@@ -5,17 +5,23 @@
             [blueprints.models.security-deposit :as deposit]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
+            [clostache.parser :as stache]
             [datomic.api :as d]
             [mailer.core :as mailer]
+            [markdown.core :as md]
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.tipe :as tipe]
             [reactor.utils.mail :as mail]
+            [reactor.config :as config :refer [config]]
             [teller.payment :as tpayment]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]))
+            [toolbelt.datomic :as td]
+            [toolbelt.core :as tb]
+            [clojure.string :as string]))
 
 ;; =============================================================================
 ;; First Payment
@@ -89,20 +95,64 @@
   (format "%s/accounts/%s" hostname account-id))
 
 
+(def security-deposit-refund-document-id
+  "The Tipe document id for the security deposit refund email template to be sent to
+  members that have been refunded."
+  "5b4e3b4745f59000134b6f37")
+
+
+(defn- prepare-line-items
+  [line-items line-type]
+  (let [lines-str (->> (mapv
+                  (fn [item]
+                    (format "* %s - &#36;%.2f"
+                            (:line-item/desc item)
+                            (:line-item/price item)))
+                  line-items)
+                 (string/join "\n"))]
+    (when (not (empty? lines-str))
+      (str line-type "\n" lines-str))))
+
+
+(defn- line-items
+  [db deposit subtype line-type]
+  (-> (mapv
+       #(d/touch (d/entity db (td/id %)))
+       (deposit/line-items-by-subtype deposit subtype))
+      (prepare-line-items line-type)))
+
+
+(defn- prepare-deposit-email
+  [db document account deposit]
+  (let [charges (line-items db deposit :refund-charge "Charges:")
+        credits (line-items db deposit :refund-credit "Credits:")]
+    (tb/transform-when-key-exists document
+      {:subject (fn [subject] (stache/render subject {:name (account/first-name account)}))
+       :body    (fn [body]
+                  (-> (stache/render body {:name                   (account/first-name account)
+                                           :deposit-refund-total   (format "&#36;%.2f" (deposit/refund-amount deposit))
+                                           :charges-exist          (some? charges)
+                                           :credits-exist          (some? credits)
+                                           :deposit-refund-charges charges
+                                           :deposit-refund-credits credits})
+                      (md/md-to-html-string)))})))
+
+
 (defmethod dispatch/notify :deposit/refund
   [deps event {:keys [deposit-id account-id]}]
-  (let [account (d/entity (->db deps) account-id)
-        deposit (d/entity (->db deps) deposit-id)]
+  (let [account  (d/entity (->db deps) account-id)
+        deposit  (d/entity (->db deps) deposit-id)
+        document (tipe/fetch-document (->tipe deps) security-deposit-refund-document-id)
+        content  (prepare-deposit-email (->db deps) document account deposit)]
     (mailer/send
      (->mailer deps)
      (account/email account)
-     (mail/subject (format "Your deposit has been refunded!"))
-     (mm/msg
-      (mm/greet (account/first-name account))
-      (mm/p
-       "We've processed your security deposit refund. You should see the money in your bank account within the next 10 days.")
-      (mm/sig))
-     {:uuid (event/uuid event)})))
+     (mail/subject (:subject content))
+     (mm/msg  (:body content) mail/ops-sig)
+     (tb/assoc-when
+      {:uuid (event/uuid event)
+       :from mail/from-noreply
+       :bcc  (when (config/production? config) mail/community-address)}))))
 
 
 (defmethod dispatch/report :deposit/refund
@@ -115,11 +165,11 @@
       :channel slack/ops}
      (sm/msg
       (sm/info
-       (sm/title (str "Deposit Refunded for "
+       (sm/title (str "Deposit Refund for "
                       (account/short-name account))
                  (member-url (->dashboard-hostname deps) (td/id account)))
        (sm/fields
-        (sm/field "Total" (format "%.2f" 10.0))))))))
+        (sm/field "Total" (format "$%.2f" (deposit/refund-amount deposit)))))))))
 
 
 ;; =============================================================================
