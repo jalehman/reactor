@@ -1,5 +1,12 @@
 (ns reactor.handlers.stripe.balance
-  #_(:require [blueprints.models.event :as event]
+  (:require [reactor.handlers.stripe.balance.available]))
+
+
+
+
+
+
+#_(:require [blueprints.models.event :as event]
             [blueprints.models.transaction :as transaction]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
@@ -19,7 +26,7 @@
             [clojure.string :as string]
             [datomic.api :as d]
             [cheshire.core :as json]
-            [toolbelt.core :as tb]))
+            [toolbelt.core :as tb])
 
 
 ;; =============================================================================
