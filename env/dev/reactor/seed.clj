@@ -39,7 +39,7 @@
 
 
 (defn- seed-properties [teller]
-  (let [fees (tproperty/construct-fees (tproperty/fee 5))]
+  (let [fees (tproperty/construct-fees (tproperty/format-fee 5))]
     (when-not (tproperty/by-id teller "52gilbert")
       (tproperty/create! teller "52gilbert" "52 Gilbert" "jesse@starcity.com"
                          {:fees      fees
