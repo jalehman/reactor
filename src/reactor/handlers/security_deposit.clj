@@ -5,17 +5,23 @@
             [blueprints.models.security-deposit :as deposit]
             [clj-time.coerce :as c]
             [clj-time.core :as t]
+            [clostache.parser :as stache]
             [datomic.api :as d]
             [mailer.core :as mailer]
+            [markdown.core :as md]
             [mailer.message :as mm]
             [reactor.dispatch :as dispatch]
             [reactor.handlers.common :refer :all]
             [reactor.services.slack :as slack]
             [reactor.services.slack.message :as sm]
+            [reactor.utils.tipe :as tipe]
             [reactor.utils.mail :as mail]
+            [reactor.config :as config :refer [config]]
             [teller.payment :as tpayment]
             [toolbelt.date :as date]
-            [toolbelt.datomic :as td]))
+            [toolbelt.datomic :as td]
+            [toolbelt.core :as tb]
+            [clojure.string :as string]))
 
 ;; =============================================================================
 ;; First Payment
@@ -75,139 +81,95 @@
 ;; =============================================================================
 
 
-;; (defmethod dispatch/notify :deposit.refund/finish
-;;   [deps event {:keys [deposit-id amount reasons]}]
-;;   (let [deposit (d/entity (->db deps) deposit-id)
-;;         account (deposit/account deposit)
-;;         partial (< amount (deposit/amount deposit))]
-;;     (mailer/send
-;;      (->mailer deps)
-;;      (account/email account)
-;;      (mail/subject "Security Deposit Refund")
-;;      (mm/msg
-;;       (mm/greet (account/first-name account))
-;;       (if partial
-;;         (mm/p (format "We've refunded <b>$%.2f</b> of your <b>$%.2f</b> deposit for the following reasons:"
-;;                       amount (deposit/amount deposit)))
-;;         (mm/p (format "Your entire deposit of <b>$%.2f</b> has been refunded."
-;;                       (deposit/amount deposit))))
-;;       (when partial
-;;         (mm/p (format "<i>%s</i>" (-> reasons (string/replace #"\n" "<br>")))))
-;;       (mm/p "It may take up to <b>10 business days</b> for the funds to be returned to your account.")
-;;       mail/accounting-sig)
-;;      {:uuid (event/uuid event)
-;;       :from mail/from-accounting})))
+(defmethod dispatch/job :deposit/refund
+  [deps event {:keys [deposit-id account-id]}]
+  [(event/report (event/key event) {:params       {:deposit-id deposit-id
+                                                   :account-id account-id}
+                                    :triggered-by event})
+   (event/notify (event/key event) {:params       {:deposit-id deposit-id
+                                                   :account-id account-id}
+                                    :triggered-by event})])
 
 
-;; (defmethod dispatch/job :deposit.refund/finish
-;;   [deps event {:keys [deposit-id amount reasons] :as params}]
-;;   [(event/notify (event/key event) {:params       params
-;;                                     :triggered-by event})
-;;    {:db/id                 deposit-id
-;;     :deposit/refund-status :deposit.refund-status/successful}])
+(defn- member-url [hostname account-id]
+  (format "%s/accounts/%s" hostname account-id))
 
 
-;; (defn refund-payment!
-;;   "Refund `amount` from `payment`."
-;;   [deps payment amount]
-;;   (<!!? (rc/refund! (->stripe deps) (payment/charge-id payment)
-;;                     :amount (float amount))))
-
-;; (s/fdef refund-payment!
-;;         :args (s/cat :deps map?
-;;                      :payment td/entity?
-;;                      :amount number?))
+(def security-deposit-refund-document-id
+  "The Tipe document id for the security deposit refund email template to be sent to
+  members that have been refunded."
+  "5b4e3b4745f59000134b6f37")
 
 
-;; (defmethod dispatch/job :deposit.refund/payment
-;;   [deps event {:keys [deposit-id payment-id refund-amount remaining] :as params}]
-;;   (let [payment (d/entity (->db deps) payment-id)]
-;;     (try
-;;       (refund-payment! deps payment refund-amount)
-;;       (if-some [{:keys [payment-id refund-amount]} (first remaining)]
-;;         (event/job :deposit.refund/payment
-;;                    {:params       (merge
-;;                                    {:deposit-id    deposit-id
-;;                                     :payment-id    payment-id
-;;                                     :refund-amount refund-amount
-;;                                     :remaining     (rest remaining)}
-;;                                    params)
-;;                     :triggered-by event})
-;;         (event/job :deposit.refund/finish
-;;                    {:params       (select-keys params [:deposit-id :amount :reasons])
-;;                     :triggered-by event}))
-;;       (catch Throwable t
-;;         (timbre/error t :deposit.refund/payment {:deposit-id deposit-id
-;;                                                  :payment-id payment-id})
-;;         (throw (ex-info "Error encountered while attempting to refund payment!"
-;;                         {:deposit-id deposit-id
-;;                          :payment-id payment-id
-;;                          :tx         [{:db/id                 deposit-id
-;;                                        :deposit/refund-status :deposit.refund-status/failed}]}))))))
+(defn- prepare-line-items
+  [line-items line-type]
+  (let [lines-str (->> (mapv
+                  (fn [item]
+                    (format "* %s - &#36;%.2f"
+                            (:line-item/desc item)
+                            (:line-item/price item)))
+                  line-items)
+                 (string/join "\n"))]
+    (when (not (empty? lines-str))
+      (str line-type "\n" lines-str))))
 
 
-;; (defn- refund-params
-;;   "Look through `deposit`'s payments and determine how much, if any, to deduct
-;;   from each one. This function produces part of the parameters needed for the
-;;   `:deposit.refund/payment` event."
-;;   [deposit refund]
-;;   (-> (reduce
-;;        (fn [[total py-params] payment]
-;;          (cond
-;;            (zero? total)
-;;            [total py-params]
-
-;;            (< total (payment/amount payment))
-;;            [0
-;;             (conj py-params {:payment-id    (:db/id payment)
-;;                              :refund-amount total})]
-
-;;            :otherwise
-;;            [(- total (payment/amount payment))
-;;             (conj py-params {:payment-id    (:db/id payment)
-;;                              :refund-amount (payment/amount payment)})]))
-;;        [refund []]
-;;        (sort-by (comp min payment/amount) (deposit/payments deposit)))
-;;       (second)))
+(defn- line-items
+  [db deposit subtype line-type]
+  (-> (mapv
+       #(d/touch (d/entity db (td/id %)))
+       (deposit/line-items-by-subtype deposit subtype))
+      (prepare-line-items line-type)))
 
 
-;; (s/def ::payment-id integer?)
-;; (s/def ::refund-amount (s/and float? pos?))
-;; (s/fdef refund-params
-;;         :args (s/cat :deposit td/entity?
-;;                      :refund (s/and float? pos?))
-;;         :ret (s/+ (s/keys :req-un [::payment-id ::refund-amount])))
+(defn- prepare-deposit-email
+  [db document account deposit]
+  (let [charges (line-items db deposit :refund-charge "Charges:")
+        credits (line-items db deposit :refund-credit "Credits:")]
+    (tb/transform-when-key-exists document
+      {:subject (fn [subject] (stache/render subject {:name (account/first-name account)}))
+       :body    (fn [body]
+                  (-> (stache/render body {:name                   (account/first-name account)
+                                           :deposit-refund-total   (format "&#36;%.2f" (deposit/refund-amount deposit))
+                                           :charges-exist          (some? charges)
+                                           :credits-exist          (some? credits)
+                                           :deposit-refund-charges charges
+                                           :deposit-refund-credits credits})
+                      (md/md-to-html-string)))})))
 
 
-;; (defn refund-deposit [deps event deposit amount reasons]
-;;   (let [py-params (refund-params deposit amount)
-;;         remaining (when (> (count py-params) 1) (rest py-params))]
-;;     (event/job :deposit.refund/payment {:params       (merge
-;;                                                        (first py-params)
-;;                                                        (tb/assoc-when
-;;                                                         {:deposit-id (:db/id deposit)
-;;                                                          :amount     amount
-;;                                                          :reasons    reasons}
-;;                                                         :remaining remaining))
-;;                                         :triggered-by event})))
-
-;; (s/fdef refund-deposit
-;;         :args (s/cat :deps map?
-;;                      :event td/entity?
-;;                      :deposit td/entity?
-;;                      :amount float?
-;;                      :reasons string?)
-;;         :ret map?)
+(defmethod dispatch/notify :deposit/refund
+  [deps event {:keys [deposit-id account-id]}]
+  (let [account  (d/entity (->db deps) account-id)
+        deposit  (d/entity (->db deps) deposit-id)
+        document (tipe/fetch-document (->tipe deps) security-deposit-refund-document-id)
+        content  (prepare-deposit-email (->db deps) document account deposit)]
+    (mailer/send
+     (->mailer deps)
+     (account/email account)
+     (mail/subject (:subject content))
+     (mm/msg  (:body content) mail/ops-sig)
+     (tb/assoc-when
+      {:uuid (event/uuid event)
+       :from mail/from-noreply
+       :bcc  (when (config/production? config) mail/community-address)}))))
 
 
-;; (defmethod dispatch/job :deposit/refund
-;;   [deps event {:keys [deposit-id amount reasons]}]
-;;   (let [deposit (d/entity (->db deps) deposit-id)]
-;;     (assert (#{:deposit.refund-status/initiated} (deposit/refund-status deposit))
-;;             "The deposit must be `:deposit.refund-status/initiated`.")
-;;     (assert (every? payment/charge? (deposit/payments deposit))
-;;             "Cannot refund deposit made without Stripe payments.")
-;;     (refund-deposit deps event deposit (float amount) reasons)))
+(defmethod dispatch/report :deposit/refund
+  [deps event {:keys [deposit-id account-id]}]
+  (let [account (d/entity (->db deps) account-id)
+        deposit (d/entity (->db deps) deposit-id)]
+    (slack/send
+     (->slack deps)
+     {:uuid    (event/uuid event)
+      :channel slack/ops}
+     (sm/msg
+      (sm/info
+       (sm/title (str "Deposit Refund for "
+                      (account/short-name account))
+                 (member-url (->dashboard-hostname deps) (td/id account)))
+       (sm/fields
+        (sm/field "Total" (format "$%.2f" (deposit/refund-amount deposit)))))))))
 
 
 ;; =============================================================================
