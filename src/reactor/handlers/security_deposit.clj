@@ -185,7 +185,7 @@
   (let [account      (deposit/account deposit)
         tz           (member-license/time-zone (member-license/by-account db account))
         days-overdue (t/in-days (t/interval
-                                 (date/tz-corrected-dt
+                                 (date/tz-uncorrected-dt
                                   (c/to-date-time (deposit/due deposit)) tz)
                                  (t/now)))]
     (format "%s. %s's (_%s_) security deposit is overdue by *%s days* (_due %s_)."
@@ -193,7 +193,7 @@
             (account/short-name account)
             (account/email account)
             days-overdue
-            (-> deposit deposit/due (date/tz-corrected tz) (date/short true)))))
+            (-> deposit deposit/due (date/tz-uncorrected tz) (date/short true)))))
 
 
 (defmethod dispatch/report :deposits/alert-unpaid
@@ -225,7 +225,7 @@
      (mm/greet (-> deposit deposit/account account/first-name))
      (mm/p
       (format "I hope you're settling in to the Starcity community. I'm reaching out because the remainder of your security deposit is now overdue (it was <b>due by %s</b>). Please <a href='%s/login'>log in to your account</a> to pay your balance as soon as possible."
-              (date/short (date/tz-corrected (deposit/due deposit) tz) true)
+              (date/short (date/tz-uncorrected (deposit/due deposit) tz) true)
               hostname))
      (mm/p "If you're having trouble remitting payment, please let me know so I can figure out how best to accommodate you.")
      mail/accounting-sig)))
@@ -267,8 +267,8 @@
                             deposit/account
                             (member-license/active (->db deps))
                             member-license/time-zone)
-        due            (date/tz-corrected (deposit/due deposit) tz)
-        as-of          (date/tz-corrected as-of tz)
+        due            (date/tz-uncorrected (deposit/due deposit) tz)
+        as-of          (date/tz-uncorrected as-of tz)
         days-until-due (->> due
                             c/to-date-time
                             (t/interval (c/to-date-time as-of))
@@ -294,10 +294,3 @@
      (deposit-due-soon-body deps deposit as-of)
      {:uuid (event/uuid event)
       :from mail/from-accounting})))
-
-
-(comment
-
-  (t/in-days (t/interval (t/now) (t/plus (t/now) (t/days 5))))
-
-  )
