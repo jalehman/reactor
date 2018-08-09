@@ -513,6 +513,7 @@
        :from (or (:from content) (mail/from-noreply))}
       :bcc (when (config/production? config) mail/community-address)))))
 
+
 (defmethod dispatch/job :transition/month-to-month-created
   [deps event {:keys [transition-uuid] :as params}]
   [(event/report (event/key event) {:params       {:transition-uuid transition-uuid}

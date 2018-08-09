@@ -65,9 +65,9 @@
 
 (defmethod dispatch/job :ops/daily
   [deps event {:keys [t]}]
-  [(event/job ::report-untransitioned-licenses
-              {:params       {:t t}
-               :triggered-by event})
+  [(event/report ::report-untransitioned-licenses
+                 {:params       {:t t}
+                  :triggered-by event})
    (event/job ::send-renewal-reminders
               {:params       {:t        t
                               :interval reminder-interval}
@@ -256,6 +256,8 @@
                                        {:new-license new-license})]
     [new-license
      transition
+     {:db/id            (-> old-license member-license/account td/id)
+      :account/licenses (td/id new-license)}
      (events/month-to-month-transition-created transition)]))
 
 
