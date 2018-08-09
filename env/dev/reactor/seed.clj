@@ -72,11 +72,11 @@
           tz       (t/time-zone-for-id "America/Los_Angeles")
           license (member-license/active (d/db (teller/db teller)) [:account/email "member@test.com"])]
       (tsource/set-default! (first (tcustomer/sources customer)) :payment.type/order)
-      (println "\n\n" (tpayment/id (tpayment/create! customer 2000.0 :payment.type/rent
-                                         {:subtypes [:fee :redicuous-fee]
-                                          :due    (date/end-of-day (java.util.Date.) tz)
-                                          :period [(date/beginning-of-month (java.util.Date.) tz)
-                                                   (date/end-of-month (java.util.Date.) tz)]}))) "\n\n")))
+      (tpayment/create! customer 2000.0 :payment.type/rent
+                        {:subtypes [:fee :redicuous-fee]
+                         :due    (date/end-of-day (java.util.Date.) tz)
+                         :period [(date/beginning-of-month (java.util.Date.) tz)
+                                  (date/end-of-month (java.util.Date.) tz)]}) "\n\n")))
 
 
 (defn seed-teller [teller]
